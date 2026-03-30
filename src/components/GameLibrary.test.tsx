@@ -1,15 +1,17 @@
-import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, afterAll, describe, it, expect, mock, beforeEach } from "bun:test";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
-import { GameLibrary } from "./GameLibrary";
 import type { GameInfo } from "../types/game";
 
-const mockUseGameList = vi.fn();
+const mockUseGameList = mock();
 
-vi.mock("../hooks/useGameList", () => ({
+mock.module("../hooks/useGameList", () => ({
   useGameList: () => mockUseGameList(),
 }));
 
+const { GameLibrary } = await import("./GameLibrary");
+
 afterEach(cleanup);
+afterAll(() => mock.restore());
 
 const mockGames: GameInfo[] = [
   {
@@ -40,15 +42,15 @@ describe("GameLibrary", () => {
       games: [],
       loading: true,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
-    render(<GameLibrary username="testuser" onSelectGame={vi.fn()} onSignOut={vi.fn()} />);
+    render(<GameLibrary username="testuser" onSelectGame={mock()} onSignOut={mock()} />);
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
   it("shows error message with retry button when fetch fails", () => {
-    const retry = vi.fn();
+    const retry = mock();
     mockUseGameList.mockReturnValue({
       games: [],
       loading: false,
@@ -56,11 +58,11 @@ describe("GameLibrary", () => {
       retry,
     });
 
-    render(<GameLibrary username="testuser" onSelectGame={vi.fn()} onSignOut={vi.fn()} />);
+    render(<GameLibrary username="testuser" onSelectGame={mock()} onSignOut={mock()} />);
     expect(screen.getByText(/steam not found/i)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /retry/i }));
-    expect(retry).toHaveBeenCalledOnce();
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 
   it("shows empty state when no games are found", () => {
@@ -68,10 +70,10 @@ describe("GameLibrary", () => {
       games: [],
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
-    render(<GameLibrary username="testuser" onSelectGame={vi.fn()} onSignOut={vi.fn()} />);
+    render(<GameLibrary username="testuser" onSelectGame={mock()} onSignOut={mock()} />);
     expect(screen.getByText(/no games found/i)).toBeInTheDocument();
   });
 
@@ -80,10 +82,10 @@ describe("GameLibrary", () => {
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
-    render(<GameLibrary username="testuser" onSelectGame={vi.fn()} onSignOut={vi.fn()} />);
+    render(<GameLibrary username="testuser" onSelectGame={mock()} onSignOut={mock()} />);
     expect(screen.getByText("Crimson Desert")).toBeInTheDocument();
     expect(screen.getByText("Team Fortress 2")).toBeInTheDocument();
   });
@@ -93,10 +95,10 @@ describe("GameLibrary", () => {
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
-    render(<GameLibrary username="testuser" onSelectGame={vi.fn()} onSignOut={vi.fn()} />);
+    render(<GameLibrary username="testuser" onSelectGame={mock()} onSignOut={mock()} />);
     const images = screen.getAllByRole("img");
     expect(images[0]).toHaveAttribute(
       "src",
@@ -113,11 +115,11 @@ describe("GameLibrary", () => {
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
-    const onSelectGame = vi.fn();
-    render(<GameLibrary username="testuser" onSelectGame={onSelectGame} onSignOut={vi.fn()} />);
+    const onSelectGame = mock();
+    render(<GameLibrary username="testuser" onSelectGame={onSelectGame} onSignOut={mock()} />);
 
     fireEvent.click(screen.getByText("Crimson Desert"));
     expect(onSelectGame).toHaveBeenCalledWith(mockGames[0]);
@@ -128,10 +130,10 @@ describe("GameLibrary", () => {
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
-    render(<GameLibrary username="testuser" onSelectGame={vi.fn()} onSignOut={vi.fn()} />);
+    render(<GameLibrary username="testuser" onSelectGame={mock()} onSignOut={mock()} />);
     expect(screen.getByText(/testuser/)).toBeInTheDocument();
   });
 
@@ -140,13 +142,13 @@ describe("GameLibrary", () => {
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
-    const onSignOut = vi.fn();
-    render(<GameLibrary username="testuser" onSelectGame={vi.fn()} onSignOut={onSignOut} />);
+    const onSignOut = mock();
+    render(<GameLibrary username="testuser" onSelectGame={mock()} onSignOut={onSignOut} />);
 
     fireEvent.click(screen.getByText(/sign out/i));
-    expect(onSignOut).toHaveBeenCalledOnce();
+    expect(onSignOut).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,26 +1,28 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, mock, beforeEach, afterEach, afterAll } from "bun:test";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
-import App from "./App";
 import type { GameInfo } from "./types/game";
 
 // Mock all hooks
-const mockUseAuth = vi.fn();
-const mockUseGameList = vi.fn();
-const mockUseManifestList = vi.fn();
+const mockUseAuth = mock();
+const mockUseGameList = mock();
+const mockUseManifestList = mock();
 
-vi.mock("./hooks/useAuth", () => ({
+mock.module("./hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
 }));
 
-vi.mock("./hooks/useGameList", () => ({
+mock.module("./hooks/useGameList", () => ({
   useGameList: () => mockUseGameList(),
 }));
 
-vi.mock("./hooks/useManifestList", () => ({
+mock.module("./hooks/useManifestList", () => ({
   useManifestList: () => mockUseManifestList(),
 }));
 
+const { default: App } = await import("./App");
+
 afterEach(cleanup);
+afterAll(() => mock.restore());
 
 const mockGames: GameInfo[] = [
   {
@@ -40,20 +42,20 @@ describe("App", () => {
       authenticated: false,
       submitting: false,
       error: null,
-      submit: vi.fn(),
-      signOut: vi.fn(),
+      submit: mock(),
+      signOut: mock(),
     });
     mockUseGameList.mockReturnValue({
       games: [],
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
     mockUseManifestList.mockReturnValue({
       manifests: [],
       loading: false,
       error: null,
-      fetch: vi.fn(),
+      fetch: mock(),
     });
   });
 
@@ -68,14 +70,14 @@ describe("App", () => {
       authenticated: true,
       submitting: false,
       error: null,
-      submit: vi.fn(),
-      signOut: vi.fn(),
+      submit: mock(),
+      signOut: mock(),
     });
     mockUseGameList.mockReturnValue({
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
     render(<App />);
@@ -88,14 +90,14 @@ describe("App", () => {
       authenticated: true,
       submitting: false,
       error: null,
-      submit: vi.fn(),
-      signOut: vi.fn(),
+      submit: mock(),
+      signOut: mock(),
     });
     mockUseGameList.mockReturnValue({
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
     render(<App />);
@@ -110,14 +112,14 @@ describe("App", () => {
       authenticated: true,
       submitting: false,
       error: null,
-      submit: vi.fn(),
-      signOut: vi.fn(),
+      submit: mock(),
+      signOut: mock(),
     });
     mockUseGameList.mockReturnValue({
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
     render(<App />);
@@ -134,14 +136,14 @@ describe("App", () => {
       authenticated: true,
       submitting: false,
       error: null,
-      submit: vi.fn(),
-      signOut: vi.fn(),
+      submit: mock(),
+      signOut: mock(),
     });
     mockUseGameList.mockReturnValue({
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
     render(<App />);
@@ -154,20 +156,20 @@ describe("App", () => {
   });
 
   it("calls signOut on sign out click", () => {
-    const mockSignOut = vi.fn();
+    const mockSignOut = mock();
     mockUseAuth.mockReturnValue({
       checking: false,
       authenticated: true,
       submitting: false,
       error: null,
-      submit: vi.fn(),
+      submit: mock(),
       signOut: mockSignOut,
     });
     mockUseGameList.mockReturnValue({
       games: mockGames,
       loading: false,
       error: null,
-      retry: vi.fn(),
+      retry: mock(),
     });
 
     render(<App />);

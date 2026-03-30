@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { ManifestListEntry } from "../types/manifest";
+
+type InvokeFn = typeof tauriInvoke;
 
 interface UseManifestListResult {
   manifests: ManifestListEntry[];
@@ -9,7 +11,7 @@ interface UseManifestListResult {
   fetch: (appId: string, depotId: string) => void;
 }
 
-export function useManifestList(): UseManifestListResult {
+export function useManifestList(invoke: InvokeFn = tauriInvoke): UseManifestListResult {
   const [manifests, setManifests] = useState<ManifestListEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +54,7 @@ export function useManifestList(): UseManifestListResult {
     return () => {
       cancelled = true;
     };
-  }, [params]);
+  }, [params, invoke]);
 
   return { manifests, loading, error, fetch };
 }

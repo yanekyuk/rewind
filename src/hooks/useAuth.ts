@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+
+type InvokeFn = typeof tauriInvoke;
 
 interface UseAuthResult {
   /** Whether we are checking existing auth state on mount. */
@@ -20,7 +22,7 @@ interface UseAuthResult {
   signOut: () => Promise<void>;
 }
 
-export function useAuth(): UseAuthResult {
+export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -46,7 +48,7 @@ export function useAuth(): UseAuthResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [invoke]);
 
   const submit = useCallback(
     async (username: string, password: string, guardCode?: string) => {
@@ -74,13 +76,13 @@ export function useAuth(): UseAuthResult {
         setSubmitting(false);
       }
     },
-    [],
+    [invoke],
   );
 
   const signOut = useCallback(async () => {
     await invoke("clear_credentials");
     setAuthenticated(false);
-  }, []);
+  }, [invoke]);
 
   return { checking, authenticated, submitting, error, submit, signOut };
 }

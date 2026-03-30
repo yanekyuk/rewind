@@ -1,12 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useManifestList } from "./useManifestList";
 
-const mockInvoke = vi.fn();
-
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (...args: unknown[]) => mockInvoke(...args),
-}));
+const mockInvoke = mock() as any;
 
 describe("useManifestList", () => {
   beforeEach(() => {
@@ -14,7 +10,7 @@ describe("useManifestList", () => {
   });
 
   it("starts with empty state", () => {
-    const { result } = renderHook(() => useManifestList());
+    const { result } = renderHook(() => useManifestList(mockInvoke));
 
     expect(result.current.manifests).toEqual([]);
     expect(result.current.loading).toBe(false);
@@ -28,7 +24,7 @@ describe("useManifestList", () => {
     ];
     mockInvoke.mockResolvedValue(mockManifests);
 
-    const { result } = renderHook(() => useManifestList());
+    const { result } = renderHook(() => useManifestList(mockInvoke));
 
     act(() => {
       result.current.fetch("3321460", "3321461");
@@ -50,7 +46,7 @@ describe("useManifestList", () => {
   it("sets error state on failure", async () => {
     mockInvoke.mockRejectedValue("Auth required");
 
-    const { result } = renderHook(() => useManifestList());
+    const { result } = renderHook(() => useManifestList(mockInvoke));
 
     act(() => {
       result.current.fetch("3321460", "3321461");
@@ -66,7 +62,7 @@ describe("useManifestList", () => {
     const mockManifests = [{ manifest_id: "111", date: "2025-01-01" }];
     mockInvoke.mockResolvedValue(mockManifests);
 
-    const { result } = renderHook(() => useManifestList());
+    const { result } = renderHook(() => useManifestList(mockInvoke));
 
     act(() => {
       result.current.fetch("3321460", "3321461");

@@ -1,13 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useGameList } from "./useGameList";
 import type { GameInfo } from "../types/game";
 
-const mockInvoke = vi.fn();
-
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (...args: unknown[]) => mockInvoke(...args),
-}));
+const mockInvoke = mock() as any;
 
 const mockGames: GameInfo[] = [
   {
@@ -35,7 +31,7 @@ describe("useGameList", () => {
 
   it("starts in loading state", () => {
     mockInvoke.mockReturnValue(new Promise(() => {})); // never resolves
-    const { result } = renderHook(() => useGameList());
+    const { result } = renderHook(() => useGameList(mockInvoke));
 
     expect(result.current.loading).toBe(true);
     expect(result.current.games).toEqual([]);
@@ -44,7 +40,7 @@ describe("useGameList", () => {
 
   it("fetches games on mount via invoke('list_games')", async () => {
     mockInvoke.mockResolvedValue(mockGames);
-    const { result } = renderHook(() => useGameList());
+    const { result } = renderHook(() => useGameList(mockInvoke));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -55,7 +51,7 @@ describe("useGameList", () => {
 
   it("sets error state when invoke fails", async () => {
     mockInvoke.mockRejectedValue(new Error("Steam not found"));
-    const { result } = renderHook(() => useGameList());
+    const { result } = renderHook(() => useGameList(mockInvoke));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 
@@ -65,7 +61,7 @@ describe("useGameList", () => {
 
   it("can retry after an error", async () => {
     mockInvoke.mockRejectedValueOnce(new Error("Steam not found"));
-    const { result } = renderHook(() => useGameList());
+    const { result } = renderHook(() => useGameList(mockInvoke));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("Steam not found");
@@ -84,7 +80,7 @@ describe("useGameList", () => {
 
   it("handles non-Error rejection values", async () => {
     mockInvoke.mockRejectedValue("string error");
-    const { result } = renderHook(() => useGameList());
+    const { result } = renderHook(() => useGameList(mockInvoke));
 
     await waitFor(() => expect(result.current.loading).toBe(false));
 

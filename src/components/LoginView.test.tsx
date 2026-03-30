@@ -1,13 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, mock, beforeEach, afterEach, afterAll } from "bun:test";
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
-import { LoginView } from "./LoginView";
 
-const mockSubmit = vi.fn();
-const mockUseAuth = vi.fn();
+const mockSubmit = mock();
+const mockUseAuth = mock();
 
-vi.mock("../hooks/useAuth", () => ({
+mock.module("../hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
 }));
+
+const { LoginView } = await import("./LoginView");
+
+afterAll(() => mock.restore());
 
 describe("LoginView", () => {
   afterEach(cleanup);
@@ -20,23 +23,23 @@ describe("LoginView", () => {
       submitting: false,
       error: null,
       submit: mockSubmit,
-      signOut: vi.fn(),
+      signOut: mock(),
     });
   });
 
   it("renders the Rewind branding", () => {
-    render(<LoginView onAuthenticated={vi.fn()} />);
+    render(<LoginView onAuthenticated={mock()} />);
     expect(screen.getByText("Rewind")).toBeInTheDocument();
   });
 
   it("renders username and password fields", () => {
-    render(<LoginView onAuthenticated={vi.fn()} />);
+    render(<LoginView onAuthenticated={mock()} />);
     expect(screen.getByLabelText("Username")).toBeInTheDocument();
     expect(screen.getByLabelText("Password")).toBeInTheDocument();
   });
 
   it("renders password field with type password", () => {
-    render(<LoginView onAuthenticated={vi.fn()} />);
+    render(<LoginView onAuthenticated={mock()} />);
     expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
   });
 
@@ -47,16 +50,16 @@ describe("LoginView", () => {
       submitting: true,
       error: null,
       submit: mockSubmit,
-      signOut: vi.fn(),
+      signOut: mock(),
     });
 
-    render(<LoginView onAuthenticated={vi.fn()} />);
+    render(<LoginView onAuthenticated={mock()} />);
     expect(screen.getByText(/waiting for steam guard/i)).toBeInTheDocument();
   });
 
   it("calls submit with username and password on form submit", async () => {
     mockSubmit.mockResolvedValue(undefined);
-    render(<LoginView onAuthenticated={vi.fn()} />);
+    render(<LoginView onAuthenticated={mock()} />);
 
     fireEvent.change(screen.getByLabelText("Username"), {
       target: { value: "testuser" },
@@ -78,22 +81,22 @@ describe("LoginView", () => {
       submitting: false,
       error: "Invalid credentials",
       submit: mockSubmit,
-      signOut: vi.fn(),
+      signOut: mock(),
     });
 
-    render(<LoginView onAuthenticated={vi.fn()} />);
+    render(<LoginView onAuthenticated={mock()} />);
     expect(screen.getByText("Invalid credentials")).toBeInTheDocument();
   });
 
   it("calls onAuthenticated when auth succeeds", () => {
-    const onAuthenticated = vi.fn();
+    const onAuthenticated = mock();
     mockUseAuth.mockReturnValue({
       checking: false,
       authenticated: true,
       submitting: false,
       error: null,
       submit: mockSubmit,
-      signOut: vi.fn(),
+      signOut: mock(),
     });
 
     render(<LoginView onAuthenticated={onAuthenticated} />);
@@ -107,10 +110,10 @@ describe("LoginView", () => {
       submitting: false,
       error: null,
       submit: mockSubmit,
-      signOut: vi.fn(),
+      signOut: mock(),
     });
 
-    render(<LoginView onAuthenticated={vi.fn()} />);
+    render(<LoginView onAuthenticated={mock()} />);
     expect(screen.getByText(/checking/i)).toBeInTheDocument();
   });
 });

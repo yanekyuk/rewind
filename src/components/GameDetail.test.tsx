@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, mock } from "bun:test";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 import { GameDetail } from "./GameDetail";
 import type { GameInfo } from "../types/game";
@@ -17,14 +17,14 @@ const mockGame: GameInfo = {
 describe("GameDetail", () => {
   it("displays the game name", () => {
     render(
-      <GameDetail game={mockGame} onBack={vi.fn()} onChangeVersion={vi.fn()} />,
+      <GameDetail game={mockGame} onBack={mock()} onChangeVersion={mock()} />,
     );
     expect(screen.getByText("Crimson Desert")).toBeInTheDocument();
   });
 
   it("displays the game header image from Steam CDN", () => {
     render(
-      <GameDetail game={mockGame} onBack={vi.fn()} onChangeVersion={vi.fn()} />,
+      <GameDetail game={mockGame} onBack={mock()} onChangeVersion={mock()} />,
     );
     const img = screen.getByRole("img");
     expect(img).toHaveAttribute(
@@ -35,7 +35,7 @@ describe("GameDetail", () => {
 
   it("displays game metadata (app ID, build ID)", () => {
     render(
-      <GameDetail game={mockGame} onBack={vi.fn()} onChangeVersion={vi.fn()} />,
+      <GameDetail game={mockGame} onBack={mock()} onChangeVersion={mock()} />,
     );
     expect(screen.getByText(/3321460/)).toBeInTheDocument();
     expect(screen.getByText(/22560074/)).toBeInTheDocument();
@@ -43,7 +43,7 @@ describe("GameDetail", () => {
 
   it("has a Change Version button", () => {
     render(
-      <GameDetail game={mockGame} onBack={vi.fn()} onChangeVersion={vi.fn()} />,
+      <GameDetail game={mockGame} onBack={mock()} onChangeVersion={mock()} />,
     );
     expect(
       screen.getByRole("button", { name: /change version/i }),
@@ -51,26 +51,26 @@ describe("GameDetail", () => {
   });
 
   it("calls onChangeVersion when the button is clicked", () => {
-    const onChangeVersion = vi.fn();
+    const onChangeVersion = mock();
     render(
       <GameDetail
         game={mockGame}
-        onBack={vi.fn()}
+        onBack={mock()}
         onChangeVersion={onChangeVersion}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /change version/i }));
-    expect(onChangeVersion).toHaveBeenCalledOnce();
+    expect(onChangeVersion).toHaveBeenCalledTimes(1);
   });
 
   it("calls onBack when back button is clicked", () => {
-    const onBack = vi.fn();
+    const onBack = mock();
     render(
-      <GameDetail game={mockGame} onBack={onBack} onChangeVersion={vi.fn()} />,
+      <GameDetail game={mockGame} onBack={onBack} onChangeVersion={mock()} />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
-    expect(onBack).toHaveBeenCalledOnce();
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });

@@ -8,7 +8,10 @@
     "dev": "bun run ensure-sidecar && vite",
     "build": "bun run ensure-sidecar && tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "bun test src/hooks/ src/types/ && bun test src/components/ src/App.test.tsx",
+    "test:hooks": "bun test src/hooks/ src/types/",
+    "test:components": "bun test src/components/ src/App.test.tsx"
   },
   "dependencies": {
     "react": "^19.1.0",

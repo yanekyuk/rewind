@@ -1,12 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { useAuth } from "./useAuth";
 
-const mockInvoke = vi.fn();
-
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: (...args: unknown[]) => mockInvoke(...args),
-}));
+const mockInvoke = mock() as any;
 
 describe("useAuth", () => {
   beforeEach(() => {
@@ -19,7 +15,7 @@ describe("useAuth", () => {
   });
 
   it("starts in idle state with no error", async () => {
-    const { result } = renderHook(() => useAuth());
+    const { result } = renderHook(() => useAuth(mockInvoke));
 
     await waitFor(() => expect(result.current.checking).toBe(false));
 
@@ -34,7 +30,7 @@ describe("useAuth", () => {
       return Promise.resolve();
     });
 
-    const { result } = renderHook(() => useAuth());
+    const { result } = renderHook(() => useAuth(mockInvoke));
 
     await waitFor(() => expect(result.current.checking).toBe(false));
 
@@ -49,7 +45,7 @@ describe("useAuth", () => {
       return Promise.resolve();
     });
 
-    const { result } = renderHook(() => useAuth());
+    const { result } = renderHook(() => useAuth(mockInvoke));
     await waitFor(() => expect(result.current.checking).toBe(false));
 
     await act(async () => {
@@ -72,7 +68,7 @@ describe("useAuth", () => {
       return Promise.resolve();
     });
 
-    const { result } = renderHook(() => useAuth());
+    const { result } = renderHook(() => useAuth(mockInvoke));
     await waitFor(() => expect(result.current.checking).toBe(false));
 
     await act(async () => {
@@ -95,7 +91,7 @@ describe("useAuth", () => {
       return Promise.resolve();
     });
 
-    const { result } = renderHook(() => useAuth());
+    const { result } = renderHook(() => useAuth(mockInvoke));
     await waitFor(() => expect(result.current.checking).toBe(false));
 
     await act(async () => {
@@ -118,7 +114,7 @@ describe("useAuth", () => {
       return Promise.resolve();
     });
 
-    const { result } = renderHook(() => useAuth());
+    const { result } = renderHook(() => useAuth(mockInvoke));
     await waitFor(() => expect(result.current.checking).toBe(false));
 
     let submitDone: Promise<void>;
@@ -146,7 +142,7 @@ describe("useAuth", () => {
         return Promise.resolve();
       });
 
-    const { result } = renderHook(() => useAuth());
+    const { result } = renderHook(() => useAuth(mockInvoke));
     await waitFor(() => expect(result.current.checking).toBe(false));
 
     // First attempt fails

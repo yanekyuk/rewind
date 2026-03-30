@@ -1,15 +1,17 @@
-import { afterEach, describe, it, expect, vi, beforeEach } from "vitest";
+import { afterEach, afterAll, describe, it, expect, mock, beforeEach } from "bun:test";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
-import { VersionSelect } from "./VersionSelect";
 import type { GameInfo } from "../types/game";
 
-const mockUseManifestList = vi.fn();
+const mockUseManifestList = mock();
 
-vi.mock("../hooks/useManifestList", () => ({
+mock.module("../hooks/useManifestList", () => ({
   useManifestList: () => mockUseManifestList(),
 }));
 
+const { VersionSelect } = await import("./VersionSelect");
+
 afterEach(cleanup);
+afterAll(() => mock.restore());
 
 const mockGame: GameInfo = {
   appid: "3321460",
@@ -35,15 +37,15 @@ describe("VersionSelect", () => {
       manifests: mockManifests,
       loading: false,
       error: null,
-      fetch: vi.fn(),
+      fetch: mock(),
     });
 
     render(
       <VersionSelect
         game={mockGame}
         selectedManifestId={null}
-        onSelectManifest={vi.fn()}
-        onBack={vi.fn()}
+        onSelectManifest={mock()}
+        onBack={mock()}
       />,
     );
     // Current build ID
@@ -57,22 +59,22 @@ describe("VersionSelect", () => {
       manifests: [],
       loading: true,
       error: null,
-      fetch: vi.fn(),
+      fetch: mock(),
     });
 
     render(
       <VersionSelect
         game={mockGame}
         selectedManifestId={null}
-        onSelectManifest={vi.fn()}
-        onBack={vi.fn()}
+        onSelectManifest={mock()}
+        onBack={mock()}
       />,
     );
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
   });
 
   it("shows error state with retry", () => {
-    const fetchFn = vi.fn();
+    const fetchFn = mock();
     mockUseManifestList.mockReturnValue({
       manifests: [],
       loading: false,
@@ -84,8 +86,8 @@ describe("VersionSelect", () => {
       <VersionSelect
         game={mockGame}
         selectedManifestId={null}
-        onSelectManifest={vi.fn()}
-        onBack={vi.fn()}
+        onSelectManifest={mock()}
+        onBack={mock()}
       />,
     );
     expect(screen.getByText(/auth required/i)).toBeInTheDocument();
@@ -99,15 +101,15 @@ describe("VersionSelect", () => {
       manifests: mockManifests,
       loading: false,
       error: null,
-      fetch: vi.fn(),
+      fetch: mock(),
     });
 
     render(
       <VersionSelect
         game={mockGame}
         selectedManifestId={null}
-        onSelectManifest={vi.fn()}
-        onBack={vi.fn()}
+        onSelectManifest={mock()}
+        onBack={mock()}
       />,
     );
     expect(screen.getByText("2026-03-22 16:01:45")).toBeInTheDocument();
@@ -121,16 +123,16 @@ describe("VersionSelect", () => {
       manifests: mockManifests,
       loading: false,
       error: null,
-      fetch: vi.fn(),
+      fetch: mock(),
     });
 
-    const onSelectManifest = vi.fn();
+    const onSelectManifest = mock();
     render(
       <VersionSelect
         game={mockGame}
         selectedManifestId={null}
         onSelectManifest={onSelectManifest}
-        onBack={vi.fn()}
+        onBack={mock()}
       />,
     );
 
@@ -143,15 +145,15 @@ describe("VersionSelect", () => {
       manifests: mockManifests,
       loading: false,
       error: null,
-      fetch: vi.fn(),
+      fetch: mock(),
     });
 
     const { container } = render(
       <VersionSelect
         game={mockGame}
         selectedManifestId="7446650175280810671"
-        onSelectManifest={vi.fn()}
-        onBack={vi.fn()}
+        onSelectManifest={mock()}
+        onBack={mock()}
       />,
     );
 
@@ -164,20 +166,20 @@ describe("VersionSelect", () => {
       manifests: mockManifests,
       loading: false,
       error: null,
-      fetch: vi.fn(),
+      fetch: mock(),
     });
 
-    const onBack = vi.fn();
+    const onBack = mock();
     render(
       <VersionSelect
         game={mockGame}
         selectedManifestId={null}
-        onSelectManifest={vi.fn()}
+        onSelectManifest={mock()}
         onBack={onBack}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /back/i }));
-    expect(onBack).toHaveBeenCalledOnce();
+    expect(onBack).toHaveBeenCalledTimes(1);
   });
 });
