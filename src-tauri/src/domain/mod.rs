@@ -16,4 +16,5 @@
 //! - Filelist generation
 //! - Trait interfaces for infrastructure (implemented in the infrastructure layer)
 
+pub mod game;
 pub mod vdf;
