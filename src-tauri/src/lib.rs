@@ -4,7 +4,9 @@ pub mod error;
 pub mod infrastructure;
 
 use domain::game::GameInfo;
+use domain::manifest::ManifestListEntry;
 use error::RewindError;
+use infrastructure::depot_downloader;
 use infrastructure::steam;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -50,12 +52,30 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
     Ok(games)
 }
 
+/// List available manifests for a depot using DepotDownloader.
+///
+/// This Tauri IPC command:
+/// 1. Spawns DepotDownloader with the given credentials
+/// 2. Collects the manifest listing output
+/// 3. Parses it into ManifestListEntry structs
+/// 4. Returns the list to the frontend
+#[tauri::command]
+async fn list_manifests(
+    app: tauri::AppHandle,
+    app_id: String,
+    depot_id: String,
+    username: String,
+    password: String,
+) -> Result<Vec<ManifestListEntry>, RewindError> {
+    depot_downloader::list_manifests(&app, &app_id, &depot_id, &username, &password).await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![greet, list_games])
+        .invoke_handler(tauri::generate_handler![greet, list_games, list_manifests])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
