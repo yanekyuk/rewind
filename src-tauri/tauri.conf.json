@@ -32,10 +32,8 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/DepotDownloader"
+      "binaries/SteamKitSidecar"
     ],
-    "resources": [
-      "resources/DEPOTDOWNLOADER-LICENSE"
-    ]
+    "resources": []
   }
 }

@@ -1,39 +1,32 @@
 use super::ManifestListEntry;
 
-/// Parse DepotDownloader's manifest listing output into a list of entries.
+/// Parse SteamKit sidecar's manifest listing JSON output into a list of entries.
 ///
-/// When DepotDownloader is run to list available manifests for a depot, it
-/// outputs lines containing manifest IDs and dates. This function extracts
-/// those entries from the raw stdout output.
+/// The SteamKit sidecar outputs newline-delimited JSON (NDJSON). Each line is
+/// a manifest entry in JSON format with `manifest_id` and `date` fields.
 ///
-/// Expected line format (one per manifest):
-/// ```text
-/// Manifest 1234567890123456789 / 2026-03-22 16:01:45
+/// Expected format (one JSON object per line):
+/// ```json
+/// {"manifest_id":"1234567890123456789","date":"2026-03-22 16:01:45"}
+/// {"manifest_id":"8876543210987654321","date":"2026-03-01 12:30:00"}
 /// ```
 ///
-/// Lines that don't match this format are silently ignored (e.g., status
-/// messages, blank lines, "Total N manifests" summary).
+/// Lines that are not valid JSON or don't contain the required fields are
+/// silently ignored for robustness.
 pub fn parse_manifest_list(output: &str) -> Vec<ManifestListEntry> {
     let mut entries = Vec::new();
 
     for line in output.lines() {
         let trimmed = line.trim();
-
-        // Match lines like: "Manifest <id> / <date>"
-        if let Some(rest) = trimmed.strip_prefix("Manifest ") {
-            if let Some((id_str, date_str)) = rest.split_once(" / ") {
-                let id = id_str.trim();
-                let date = date_str.trim();
-
-                // Validate that the ID looks numeric
-                if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
-                    entries.push(ManifestListEntry {
-                        manifest_id: id.to_string(),
-                        date: date.to_string(),
-                    });
-                }
-            }
+        if trimmed.is_empty() {
+            continue;
         }
+
+        // Try to parse each line as a JSON object
+        if let Ok(entry) = serde_json::from_str::<ManifestListEntry>(trimmed) {
+            entries.push(entry);
+        }
+        // Lines that fail to parse are silently ignored
     }
 
     entries
@@ -44,14 +37,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_typical_manifest_list() {
+    fn parse_typical_manifest_list_ndjson() {
         let output = "\
-Got depot key for depot 3321461
-Looking for manifests for depot 3321461...
-Manifest 3559081655545104676 / 2026-03-22 16:01:45
-Manifest 8876543210987654321 / 2026-03-01 12:30:00
-Manifest 1234567890123456789 / 2026-02-15 08:00:00
-Total 3 manifests";
+{\"manifest_id\":\"3559081655545104676\",\"date\":\"2026-03-22 16:01:45\"}
+{\"manifest_id\":\"8876543210987654321\",\"date\":\"2026-03-01 12:30:00\"}
+{\"manifest_id\":\"1234567890123456789\",\"date\":\"2026-02-15 08:00:00\"}";
 
         let entries = parse_manifest_list(output);
         assert_eq!(entries.len(), 3);
@@ -71,19 +61,15 @@ Total 3 manifests";
     }
 
     #[test]
-    fn parse_no_manifests_found() {
-        let output = "\
-Got depot key for depot 12345
-Looking for manifests for depot 12345...
-Total 0 manifests";
-
+    fn parse_blank_lines() {
+        let output = "";
         let entries = parse_manifest_list(output);
         assert!(entries.is_empty());
     }
 
     #[test]
-    fn parse_single_manifest() {
-        let output = "Manifest 9999999999 / 2026-01-01 00:00:00";
+    fn parse_single_manifest_json() {
+        let output = "{\"manifest_id\":\"9999999999\",\"date\":\"2026-01-01 00:00:00\"}";
         let entries = parse_manifest_list(output);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].manifest_id, "9999999999");
@@ -91,14 +77,11 @@ Total 0 manifests";
     }
 
     #[test]
-    fn ignores_non_manifest_lines() {
+    fn ignores_invalid_json_lines() {
         let output = "\
-Some status message
-Connected to Steam
-Manifest 1111111111 / 2026-06-01 10:00:00
-Downloading something
-Manifest 2222222222 / 2026-05-01 09:00:00
-Done.";
+{\"manifest_id\":\"1111111111\",\"date\":\"2026-06-01 10:00:00\"}
+not valid json
+{\"manifest_id\":\"2222222222\",\"date\":\"2026-05-01 09:00:00\"}";
 
         let entries = parse_manifest_list(output);
         assert_eq!(entries.len(), 2);
@@ -107,22 +90,23 @@ Done.";
     }
 
     #[test]
-    fn ignores_malformed_manifest_lines() {
+    fn ignores_malformed_json_objects() {
         let output = "\
-Manifest not-a-number / 2026-01-01 00:00:00
-Manifest 1111111111 / 2026-06-01 10:00:00
-Manifest / missing id
-Manifest 2222222222 / 2026-05-01 09:00:00";
+{\"wrong_field\":\"value\"}
+{\"manifest_id\":\"1111111111\",\"date\":\"2026-06-01 10:00:00\"}
+{\"manifest_id\":\"2222222222\"}
+{\"manifest_id\":\"3333333333\",\"date\":\"2026-05-01 09:00:00\"}";
 
         let entries = parse_manifest_list(output);
+        // Only valid entries with both fields are parsed
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].manifest_id, "1111111111");
-        assert_eq!(entries[1].manifest_id, "2222222222");
+        assert_eq!(entries[1].manifest_id, "3333333333");
     }
 
     #[test]
-    fn handles_whitespace_variations() {
-        let output = "  Manifest 5555555555 / 2026-04-15 14:30:00  ";
+    fn handles_whitespace_around_json() {
+        let output = "  {\"manifest_id\":\"5555555555\",\"date\":\"2026-04-15 14:30:00\"}  ";
         let entries = parse_manifest_list(output);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].manifest_id, "5555555555");
@@ -138,5 +122,13 @@ Manifest 2222222222 / 2026-05-01 09:00:00";
         let json = serde_json::to_string(&entry).unwrap();
         assert!(json.contains("\"manifest_id\":\"1234567890\""));
         assert!(json.contains("\"date\":\"2026-01-01 00:00:00\""));
+    }
+
+    #[test]
+    fn manifest_list_entry_deserializes() {
+        let json = "{\"manifest_id\":\"9876543210\",\"date\":\"2025-12-25 12:00:00\"}";
+        let entry: ManifestListEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.manifest_id, "9876543210");
+        assert_eq!(entry.date, "2025-12-25 12:00:00");
     }
 }

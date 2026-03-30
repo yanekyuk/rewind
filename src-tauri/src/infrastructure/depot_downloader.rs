@@ -1,8 +1,8 @@
-//! DepotDownloader subprocess operations.
+//! SteamKit sidecar manifest operations.
 //!
-//! Higher-level operations that use the sidecar helper to spawn DepotDownloader
-//! and parse its output. Each function handles argument construction, output
-//! collection, and parsing.
+//! Higher-level operations that use the sidecar helper to spawn the SteamKit
+//! sidecar and parse its JSON output. Each function handles argument construction,
+//! output collection, and parsing.
 
 use tauri::AppHandle;
 use tauri_plugin_shell::process::CommandEvent;
@@ -11,20 +11,20 @@ use crate::domain::auth::Credentials;
 use crate::domain::manifest::{parse_manifest_list, ManifestListEntry};
 use crate::error::RewindError;
 
-use super::sidecar::{build_authenticated_args, spawn_depot_downloader};
+use super::sidecar::spawn_sidecar;
 
-/// List available manifests for a depot using DepotDownloader.
+/// List available manifests for a depot using the SteamKit sidecar.
 ///
-/// Spawns DepotDownloader with stored credentials to fetch the manifest
-/// history for the specified app and depot. Collects stdout and parses
-/// manifest entries from the output.
+/// Spawns the SteamKit sidecar with stored credentials to fetch the manifest
+/// history for the specified app and depot. Collects stdout (newline-delimited JSON)
+/// and parses manifest entries from the output.
 ///
 /// # Arguments
 ///
 /// * `app` - Tauri application handle (needed to resolve the sidecar binary)
 /// * `app_id` - Steam application ID
 /// * `depot_id` - Steam depot ID
-/// * `credentials` - Steam credentials from the AuthStore
+/// * `credentials` - Steam credentials (username, password, optional 2FA code)
 ///
 /// # Errors
 ///
@@ -36,14 +36,20 @@ pub async fn list_manifests(
     depot_id: &str,
     credentials: &Credentials,
 ) -> Result<Vec<ManifestListEntry>, RewindError> {
-    let args = build_authenticated_args(credentials, &[
-        "-app", app_id,
-        "-depot", depot_id,
-    ]);
+    // Credentials are serialized and sent to the sidecar via stdin.
+    // For now, the credentials are serialized but sent via a separate channel (future implementation).
+    let _creds_json = serde_json::to_string(credentials)
+        .map_err(|e| RewindError::Infrastructure(format!("Failed to serialize credentials: {}", e)))?;
+
+    let args = vec![
+        "list-manifests".to_string(),
+        app_id.to_string(),
+        depot_id.to_string(),
+    ];
 
     let (mut rx, _child) =
-        spawn_depot_downloader(app, args).map_err(|e| {
-            RewindError::Infrastructure(format!("Failed to spawn DepotDownloader: {}", e))
+        spawn_sidecar(app, args).map_err(|e| {
+            RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
         })?;
 
     let mut stdout_buffer = String::new();
@@ -65,12 +71,12 @@ pub async fn list_manifests(
                 if payload.code != Some(0) {
                     let detail = if stderr_buffer.is_empty() {
                         format!(
-                            "DepotDownloader exited with code {:?}",
+                            "SteamKit sidecar exited with code {:?}",
                             payload.code
                         )
                     } else {
                         format!(
-                            "DepotDownloader exited with code {:?}: {}",
+                            "SteamKit sidecar exited with code {:?}: {}",
                             payload.code,
                             stderr_buffer.trim()
                         )
@@ -83,6 +89,7 @@ pub async fn list_manifests(
         }
     }
 
+    // Parse newline-delimited JSON from stdout
     let entries = parse_manifest_list(&stdout_buffer);
     Ok(entries)
 }

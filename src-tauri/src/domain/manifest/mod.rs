@@ -44,13 +44,13 @@ pub struct ManifestEntry {
 
 /// A single entry from a manifest listing (available versions for a depot).
 ///
-/// Returned by DepotDownloader when listing manifests without specifying a
-/// particular manifest ID.
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+/// Returned by the SteamKit sidecar when listing manifests as newline-delimited JSON.
+/// Both `manifest_id` and `date` are required fields.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ManifestListEntry {
     /// The manifest identifier (large numeric ID as string for JSON safety).
     pub manifest_id: String,
-    /// Date/time string from the DepotDownloader output.
+    /// Date/time string from the sidecar output.
     pub date: String,
 }
 

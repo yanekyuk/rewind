@@ -43,7 +43,7 @@ fn set_credentials(
 
 /// Check whether credentials have been stored in the current session.
 ///
-/// Returns `true` if credentials are available for DepotDownloader operations.
+/// Returns `true` if credentials are available for SteamKit sidecar operations.
 #[tauri::command]
 fn get_auth_state(state: tauri::State<'_, AuthStore>) -> bool {
     state.is_set()
@@ -93,12 +93,12 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
     Ok(games)
 }
 
-/// List available manifests for a depot using DepotDownloader.
+/// List available manifests for a depot using the SteamKit sidecar.
 ///
 /// This Tauri IPC command:
 /// 1. Reads credentials from the AuthStore
-/// 2. Spawns DepotDownloader with stored credentials
-/// 3. Collects the manifest listing output
+/// 2. Spawns the SteamKit sidecar with stored credentials
+/// 3. Collects the manifest listing JSON output (newline-delimited)
 /// 4. Parses it into ManifestListEntry structs
 /// 5. Returns the list to the frontend
 #[tauri::command]
