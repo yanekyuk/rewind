@@ -1,50 +1,49 @@
 import { useState } from "react";
-import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/core";
+import { StepIndicator } from "./components/StepIndicator";
+import { StepView } from "./components/StepView";
+import { STEPS } from "./steps";
 import "./App.css";
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [currentStep, setCurrentStep] = useState(0);
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  const isFirstStep = currentStep === 0;
+  const isLastStep = currentStep === STEPS.length - 1;
 
   return (
-    <main className="container">
-      <h1>Welcome to Tauri + React</h1>
+    <div className="app">
+      <header className="app-header">
+        <h1 className="app-title">Rewind</h1>
+        <span className="app-subtitle">Steam Game Downgrader</span>
+      </header>
 
-      <div className="row">
-        <a href="https://vite.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+      <div className="app-body">
+        <aside className="app-sidebar">
+          <StepIndicator currentStep={currentStep} />
+        </aside>
+
+        <main className="app-content">
+          <StepView stepIndex={currentStep} />
+
+          <div className="app-nav">
+            <button
+              className="app-nav__button"
+              onClick={() => setCurrentStep((s) => s - 1)}
+              disabled={isFirstStep}
+            >
+              Back
+            </button>
+            <button
+              className="app-nav__button app-nav__button--primary"
+              onClick={() => setCurrentStep((s) => s + 1)}
+              disabled={isLastStep}
+            >
+              Next
+            </button>
+          </div>
+        </main>
       </div>
-      <p>Click on the Tauri, Vite, and React logos to learn more.</p>
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Enter a name..."
-        />
-        <button type="submit">Greet</button>
-      </form>
-      <p>{greetMsg}</p>
-    </main>
+    </div>
   );
 }
 
