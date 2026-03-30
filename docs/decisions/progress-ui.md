@@ -10,7 +10,7 @@ updated: 2026-03-30
 
 ## Context
 
-Downloading game files via DepotDownloader can take a long time -- tens of GB over consumer internet connections may take hours. Users need visibility into download progress and the freedom to do other things while waiting.
+Downloading game files via the SteamKit sidecar can take a long time -- tens of GB over consumer internet connections may take hours. Users need visibility into download progress and the freedom to do other things while waiting.
 
 ## Decision
 
@@ -25,7 +25,7 @@ Provide an embedded progress UI within the app window and background OS notifica
 - Download speed indicator.
 - Cancel button to abort the download at any time.
 
-Progress data is extracted by parsing DepotDownloader's stdout in the Rust backend and relaying it to the React frontend via Tauri IPC events.
+Progress data is extracted from the SteamKit sidecar's JSON `progress` messages (streaming on stdout) in the Rust backend and relayed to the React frontend via Tauri IPC events.
 
 ### Background Notifications
 

@@ -80,14 +80,14 @@ Rewind uses `osascript` to invoke an AppleScript that runs the `chflags` command
 
 Setting the read-only attribute does not require administrator privileges.
 
-## DepotDownloader Binary
+## SteamKit Sidecar Binary
 
-DepotDownloader is bundled as a Tauri sidecar -- a self-contained, platform-specific binary:
+The SteamKit sidecar is bundled as a Tauri sidecar -- a self-contained, platform-specific binary:
 
 | Platform | Binary | Approximate Size |
 |----------|--------|-----------------|
-| Linux | `DepotDownloader-linux-x64` | ~33 MB |
-| macOS | `DepotDownloader-osx-x64` | ~33 MB |
-| Windows | `DepotDownloader-windows-x64.exe` | ~33 MB |
+| Linux | `SteamKitSidecar-x86_64-unknown-linux-gnu` | ~50-60 MB |
+| macOS | `SteamKitSidecar-x86_64-apple-darwin` | ~50-60 MB |
+| Windows | `SteamKitSidecar-x86_64-pc-windows-msvc.exe` | ~50-60 MB |
 
-These are ahead-of-time compiled .NET binaries that include the runtime, eliminating the need for users to install .NET separately. See [decisions/depotdownloader-sidecar](../decisions/depotdownloader-sidecar.md).
+These are self-contained .NET binaries that include the runtime, eliminating the need for users to install .NET separately. See [decisions/depotdownloader-sidecar](../decisions/depotdownloader-sidecar.md) (now SteamKit2 migration decision) and [specs/sidecar-setup.md](../specs/sidecar-setup.md).

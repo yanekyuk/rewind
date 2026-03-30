@@ -1,37 +1,43 @@
 ---
 title: "Manifest Select"
 type: spec
-tags: [manifest, version-select, depotdownloader, auth, ui]
+tags: [manifest, version-select, steamkit, auth, ui]
 created: 2026-03-30
-updated: 2026-03-30
+updated: 2026-03-31
 ---
 
 ## Behavior
 
-Replace the manual "Enter Manifest ID" step with a "Select Version" step that fetches and displays available manifests for the selected game's depots using DepotDownloader.
+Replace the manual "Enter Manifest ID" step with a "Select Version" step that fetches and displays available manifests for the selected game's depots using the SteamKit sidecar.
 
 ### Backend: `list_manifests` IPC command
 
-A new Tauri IPC command `list_manifests` that:
+A Tauri IPC command `list_manifests` that:
 
 1. Accepts an app ID and depot ID
 2. Reads credentials from the AuthStore (returns `AuthRequired` error if not set)
-3. Spawns DepotDownloader with stored credentials to list available manifests
-4. Parses the output into a list of manifest entries (manifest ID, date/time)
-5. Returns the list to the frontend as a JSON array
+3. Spawns the SteamKit sidecar `list-manifests` command with stored credentials
+4. The sidecar queries Steam's PICS (Product Info Code Service) for the depot's manifest data
+5. Parses the sidecar's NDJSON output (envelope format) into manifest entries
+6. Returns the list to the frontend as a JSON array
 
-DepotDownloader is invoked with credentials from the AuthStore:
+The sidecar is invoked with:
 ```
-DepotDownloader -username <user> -password <pass> -remember-password -app <appid> -depot <depotid>
+SteamKitSidecar list-manifests --username <user> --password <pass> --app <appid> --depot <depotid>
 ```
 
-The output contains lines listing available manifests with their IDs and dates. The parser extracts these into structured types.
+The sidecar reuses a saved session token from the login step, so no re-authentication or phone approval is needed. The sidecar outputs NDJSON with a `manifest_list` envelope:
+```json
+{"type":"manifest_list","manifests":[{"id":"123456","date":"public"}]}
+```
+
+The Rust parser extracts manifest entries from this envelope format.
 
 ### Domain types
 
-A new `ManifestListEntry` type in the domain layer:
-- `manifest_id: String` -- the manifest identifier
-- `date: String` -- the date/time string from DepotDownloader output
+A `ManifestListEntry` type in the domain layer:
+- `manifest_id: String` -- the manifest identifier (accepts `id` alias from sidecar JSON)
+- `date: String` -- branch name (e.g., "public", "beta") or timestamp
 
 ### Frontend: ManifestSelect component
 
@@ -41,13 +47,13 @@ Replaces the placeholder StepView for step 1 (index 1). Follows the same pattern
 2. Auto-fetches manifests on mount (credentials are already stored in AuthStore from the auth step)
 3. Calls `list_manifests` IPC with the game's first depot (no credentials in the IPC call)
 4. Shows loading/error/empty states
-5. Renders manifest entries in a selectable list showing date and manifest ID
+5. Renders manifest entries in a selectable list showing branch name and manifest ID
 6. Provides a manual input fallback for users who already know their manifest ID
 7. Emits the selected manifest ID to App state
 
 ### Auth handling
 
-Credentials are stored in the Rust AuthStore during the authentication step (step 2) and read server-side by the `list_manifests` IPC command. ManifestSelect does not collect or pass credentials -- it relies on the auth gate to ensure credentials exist before this step is reached. See `docs/specs/auth-ui.md` for credential storage details.
+Credentials are stored in the Rust AuthStore during the authentication step (step 2) and read server-side by the `list_manifests` IPC command. ManifestSelect does not collect or pass credentials -- it relies on the auth gate to ensure credentials exist before this step is reached. The SteamKit sidecar uses a saved session token from the login step, so no 2FA is needed here. See `docs/specs/auth-ui.md` for credential storage details.
 
 ### Step definition update
 
@@ -58,7 +64,7 @@ Update step 1 in steps.ts:
 
 ## Constraints
 
-- Authentication is required -- DepotDownloader needs Steam credentials to list manifests
+- Authentication is required -- the SteamKit sidecar needs Steam credentials to query PICS
 - Manual input must remain as a fallback option
 - Credentials must never be logged or persisted by Rewind
 - Cross-platform: all paths and subprocess calls must work on Linux, macOS, and Windows
@@ -68,8 +74,8 @@ Update step 1 in steps.ts:
 
 ## Acceptance Criteria
 
-1. `list_manifests` IPC command accepts app_id and depot_id; reads credentials from AuthStore; spawns DepotDownloader and returns parsed manifest entries
-2. DepotDownloader output is parsed into `ManifestListEntry` structs with manifest_id and date fields
+1. `list_manifests` IPC command accepts app_id and depot_id; reads credentials from AuthStore; spawns SteamKit sidecar and returns parsed manifest entries
+2. Sidecar NDJSON output is parsed into `ManifestListEntry` structs from the `manifest_list` envelope
 3. ManifestSelect component displays a loading state while fetching manifests
 4. ManifestSelect component displays an error state with retry option on failure
 5. ManifestSelect component renders a selectable list of manifest entries

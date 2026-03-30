@@ -10,13 +10,14 @@
 //!
 //! # Submodules
 //!
-//! - [`sidecar`] — DepotDownloader sidecar binary resolution
+//! - [`sidecar`] — SteamKit sidecar binary resolution
+//! - [`depot_downloader`] — SteamKit sidecar manifest operations
 //! - `steam` — Steam installation path detection, library folder discovery, appmanifest scanning
 //!
 //! # Planned Submodules
 //!
 //! - Filesystem I/O (reading ACF files, copying game files)
-//! - DepotDownloader subprocess management (spawn, stdin/stdout, cancellation)
+//! - SteamKit sidecar subprocess management (spawn, JSON communication, cancellation)
 //! - Manifest file locking (chattr on Linux, chflags on macOS, SetFileAttributes on Windows)
 //! - OS-level notifications
 

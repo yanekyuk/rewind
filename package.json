@@ -1,10 +1,10 @@
 {
   "name": "rewind",
   "private": true,
-  "version": "0.8.1",
+  "version": "0.9.0",
   "type": "module",
   "scripts": {
-    "ensure-sidecar": "bash -c 'TARGET=$(rustc -vV | grep host | cut -d\" \" -f2) && EXT=\"\" && case \"$TARGET\" in *windows*) EXT=\".exe\" ;; esac && SRC=\"src-tauri/binaries/DepotDownloader-${TARGET}${EXT}\" && [ -f \"$SRC\" ] || bash scripts/download-sidecar.sh --current && mkdir -p src-tauri/target/debug/binaries && ln -sf \"$(pwd)/$SRC\" \"src-tauri/target/debug/binaries/DepotDownloader-${TARGET}${EXT}\" && echo \"Sidecar ready for ${TARGET}\"'",
+    "ensure-sidecar": "bash scripts/build-sidecar.sh",
     "dev": "bun run ensure-sidecar && vite",
     "build": "bun run ensure-sidecar && tsc && vite build",
     "preview": "vite preview",

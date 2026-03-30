@@ -44,7 +44,7 @@ pub fn clear_from_keychain() {
 ///
 /// - Created empty when the app starts (via `Default`)
 /// - Populated when the user submits credentials via `set_credentials`
-/// - Read when spawning DepotDownloader
+/// - Read when spawning the SteamKit sidecar
 /// - Dropped when the app exits (credentials are never persisted)
 #[derive(Default)]
 pub struct AuthStore {

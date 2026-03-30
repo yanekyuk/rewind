@@ -1,7 +1,7 @@
 ---
 title: "Downgrade Process"
 type: domain
-tags: [steam, downgrade, workflow, manifests, depotdownloader]
+tags: [steam, downgrade, workflow, manifests, steamkit, sidecar]
 created: 2026-03-30
 updated: 2026-03-30
 ---
@@ -54,8 +54,8 @@ See [decisions/manual-manifest-input](../decisions/manual-manifest-input.md) for
 
 To avoid downloading the entire game:
 
-1. Fetch manifest metadata for both the current and target versions using DepotDownloader's `-manifest-only` flag
-2. Parse both manifest files (lists of filenames, SHA hashes, sizes)
+1. Fetch manifest metadata for both the current and target versions using the SteamKit sidecar's `get-manifest` command
+2. Parse both manifests (lists of filenames, SHA hashes, sizes) from the sidecar's JSON output
 3. Compare files by SHA hash -- only files with different hashes need downloading
 4. Generate a filelist of changed files
 
@@ -63,9 +63,9 @@ This optimization is significant. For example, downgrading Crimson Desert from 1
 
 ### Step 6: Download Changed Files
 
-Use DepotDownloader with the `-filelist` flag to download only the changed files from Steam's CDN. This step requires Steam credentials and can take a long time for large games (tens of GB).
+Use the SteamKit sidecar with the `download` command and the filelist to download only the changed files from Steam's CDN. This step requires Steam credentials and can take a long time for large games (tens of GB).
 
-See [depotdownloader](./depotdownloader.md) for the tool's capabilities and CLI interface.
+See [steamkit-sidecar](./steamkit-sidecar.md) for the sidecar's commands and communication protocol.
 
 ### Step 7: Apply the Downgrade
 

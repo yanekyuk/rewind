@@ -1,56 +1,76 @@
 ---
 title: "Manifest Parser"
 type: spec
-tags: [manifest, parser, domain, depotdownloader, diffing]
+tags: [manifest, parser, domain, steamkit, sidecar, json, diffing]
 created: 2026-03-30
 updated: 2026-03-30
 ---
 
 ## Behavior
 
-Parse DepotDownloader's `-manifest-only` text output into structured Rust types. The input is a plain text file with a header section (depot metadata) followed by a fixed-width file table.
+Deserialize and validate JSON manifest messages received from the SteamKit sidecar into structured Rust types. The sidecar outputs manifest metadata as newline-delimited JSON with a `type: "manifest"` message.
 
-### Header parsing
+### Input Format
 
-Extract metadata from the header section:
+The sidecar outputs a JSON message:
 
-- **Depot ID** from the first line: `Content Manifest for Depot <id>`
-- **Manifest ID** and **date** from: `Manifest ID / date : <id> / <date>`
-- **Total files**, **total chunks**, **total bytes on disk**, **total bytes compressed** from key-value lines with ` : ` separator
+```json
+{
+  "type": "manifest",
+  "depot_id": 3321461,
+  "manifest_id": "7446650175280810671",
+  "total_files": 257,
+  "total_chunks": 130874,
+  "total_bytes_on_disk": 133352312992,
+  "total_bytes_compressed": 100116131120,
+  "date": "2026-03-22 16:01:45",
+  "files": [
+    {
+      "name": "0000/0.pamt",
+      "sha": "8a11847b3e22b2fb909b57787ed94d1bb139bcb2",
+      "size": 6740755,
+      "chunks": 7,
+      "flags": 0
+    }
+  ]
+}
+```
 
-### File table parsing
+### Deserialization
 
-After the blank line following the header and the column header line (`Size Chunks File SHA Flags Name`), parse each subsequent non-empty line into a file entry:
+Parse the JSON message and deserialize into a domain type (e.g., `DepotManifest` struct) with:
 
-- **Size** (u64): byte size of the file
-- **Chunks** (u32): number of download chunks
-- **File SHA** (String): 40-character hex-encoded SHA-1 hash
-- **Flags** (u32): file flags
-- **Name** (String): relative file path
-
-Columns are whitespace-separated. The Name field may contain spaces (consume the rest of the line after Flags).
+- **depot_id** (u32): Depot identifier
+- **manifest_id** (String or u64): Manifest identifier
+- **total_files** (u64): Number of files in the manifest
+- **total_chunks** (u64): Total number of download chunks
+- **total_bytes_on_disk** (u64): Uncompressed total size
+- **total_bytes_compressed** (u64): Compressed total size
+- **date** (String): Build/manifest creation date
+- **files** (Vec): List of file entries, each with name, sha (40-char hex), size (u64), chunks (u32), flags (u32)
 
 ### Public API
 
 ```rust
-pub fn parse_manifest(input: &str) -> Result<DepotManifest, ManifestError>
+pub fn deserialize_manifest(json: &str) -> Result<DepotManifest, ManifestError>
 ```
 
 ## Constraints
 
 - Domain layer only -- no filesystem I/O, no infrastructure imports
-- Operates on `&str` input; caller handles file reading
-- Use nom or hand-rolled parsing for the main structure (regex acceptable for individual field extraction within a line)
+- Operates on `&str` input (one JSON line); caller handles reading from sidecar stdout
+- Use `serde_json` for JSON deserialization
 - Numeric fields properly typed: u64 for sizes/bytes, u32 for chunks/flags
 - SHA hashes stored as String (hex-encoded, 40 chars)
-- Must handle edge cases: empty manifests (header only, no file entries), single file, large manifests
+- Must handle edge cases: empty manifests (zero files), single file, large manifests
 
 ## Acceptance Criteria
 
-1. `parse_manifest` successfully parses the example from `docs/domain/depotdownloader.md`
-2. Depot ID, manifest ID, date, total files, total chunks, total bytes on disk, total bytes compressed are all correctly extracted from the header
+1. Successfully deserialize a manifest JSON message from the sidecar
+2. All metadata fields (depot_id, manifest_id, date, total_files, total_chunks, total_bytes_on_disk, total_bytes_compressed) are correctly extracted
 3. Each file entry has correctly typed size (u64), chunks (u32), sha (String, 40 hex chars), flags (u32), and name (String)
-4. Empty manifest (header with zero files and no file table rows) parses successfully with an empty entries vec
-5. Single-file manifest parses correctly
-6. Invalid input produces descriptive `ManifestError` values
-7. No filesystem I/O or infrastructure layer imports in the module
+4. Empty manifest (zero files array) deserializes successfully
+5. Single-file manifest deserializes correctly
+6. Invalid JSON produces descriptive `ManifestError` values
+7. Missing required fields produce descriptive deserialization errors
+8. No filesystem I/O or infrastructure layer imports in the module

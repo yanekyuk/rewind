@@ -46,7 +46,7 @@ Workflow orchestration. Coordinates domain logic with infrastructure capabilitie
 External world interactions. Implements domain-defined interfaces.
 
 - Filesystem I/O (reading ACF files, copying game files)
-- DepotDownloader subprocess management (spawn, stdin/stdout, cancellation)
+- SteamKit sidecar subprocess management (spawn, stdout JSON parsing, cancellation)
 - Steam installation path detection
 - Manifest file locking (chattr, chflags, SetFileAttributes)
 - OS-level notifications

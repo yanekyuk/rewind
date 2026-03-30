@@ -1,38 +1,46 @@
 use super::ManifestListEntry;
 
-/// Parse DepotDownloader's manifest listing output into a list of entries.
+/// Envelope for the sidecar's `manifest_list` JSON message.
+#[derive(serde::Deserialize)]
+struct ManifestListMessage {
+    #[serde(default)]
+    r#type: String,
+    #[serde(default)]
+    manifests: Vec<ManifestListEntry>,
+}
+
+/// Parse SteamKit sidecar's manifest listing output into a list of entries.
 ///
-/// When DepotDownloader is run to list available manifests for a depot, it
-/// outputs lines containing manifest IDs and dates. This function extracts
-/// those entries from the raw stdout output.
+/// The sidecar outputs newline-delimited JSON (NDJSON). The manifest data
+/// arrives in a message with `"type":"manifest_list"` containing a `manifests`
+/// array. Other message types (log, done, etc.) are silently ignored.
 ///
-/// Expected line format (one per manifest):
-/// ```text
-/// Manifest 1234567890123456789 / 2026-03-22 16:01:45
+/// Expected format:
+/// ```json
+/// {"type":"log","level":"info","message":"..."}
+/// {"type":"manifest_list","manifests":[{"id":"123","date":"public"}]}
+/// {"type":"done","success":true}
 /// ```
-///
-/// Lines that don't match this format are silently ignored (e.g., status
-/// messages, blank lines, "Total N manifests" summary).
 pub fn parse_manifest_list(output: &str) -> Vec<ManifestListEntry> {
     let mut entries = Vec::new();
 
     for line in output.lines() {
         let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
 
-        // Match lines like: "Manifest <id> / <date>"
-        if let Some(rest) = trimmed.strip_prefix("Manifest ") {
-            if let Some((id_str, date_str)) = rest.split_once(" / ") {
-                let id = id_str.trim();
-                let date = date_str.trim();
-
-                // Validate that the ID looks numeric
-                if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
-                    entries.push(ManifestListEntry {
-                        manifest_id: id.to_string(),
-                        date: date.to_string(),
-                    });
-                }
+        // Try to parse as envelope with manifests array
+        if let Ok(msg) = serde_json::from_str::<ManifestListMessage>(trimmed) {
+            if msg.r#type == "manifest_list" && !msg.manifests.is_empty() {
+                entries.extend(msg.manifests);
+                continue;
             }
+        }
+
+        // Also try parsing as a bare ManifestListEntry (for flexibility)
+        if let Ok(entry) = serde_json::from_str::<ManifestListEntry>(trimmed) {
+            entries.push(entry);
         }
     }
 
@@ -44,99 +52,51 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_typical_manifest_list() {
-        let output = "\
-Got depot key for depot 3321461
-Looking for manifests for depot 3321461...
-Manifest 3559081655545104676 / 2026-03-22 16:01:45
-Manifest 8876543210987654321 / 2026-03-01 12:30:00
-Manifest 1234567890123456789 / 2026-02-15 08:00:00
-Total 3 manifests";
+    fn parse_envelope_format() {
+        let output = r#"{"type":"log","level":"info","message":"Connected"}
+{"type":"manifest_list","manifests":[{"id":"123456","date":"public"},{"id":"789012","date":"beta"}]}
+{"type":"done","success":true}"#;
 
         let entries = parse_manifest_list(output);
-        assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0].manifest_id, "3559081655545104676");
-        assert_eq!(entries[0].date, "2026-03-22 16:01:45");
-        assert_eq!(entries[1].manifest_id, "8876543210987654321");
-        assert_eq!(entries[1].date, "2026-03-01 12:30:00");
-        assert_eq!(entries[2].manifest_id, "1234567890123456789");
-        assert_eq!(entries[2].date, "2026-02-15 08:00:00");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].manifest_id, "123456");
+        assert_eq!(entries[0].date, "public");
+        assert_eq!(entries[1].manifest_id, "789012");
+        assert_eq!(entries[1].date, "beta");
     }
 
     #[test]
     fn parse_empty_output() {
-        let output = "";
-        let entries = parse_manifest_list(output);
-        assert!(entries.is_empty());
+        assert!(parse_manifest_list("").is_empty());
     }
 
     #[test]
-    fn parse_no_manifests_found() {
-        let output = "\
-Got depot key for depot 12345
-Looking for manifests for depot 12345...
-Total 0 manifests";
-
+    fn parse_bare_entries() {
+        let output = r#"{"manifest_id":"111","date":"2026-01-01"}
+{"manifest_id":"222","date":"2026-02-01"}"#;
         let entries = parse_manifest_list(output);
-        assert!(entries.is_empty());
+        assert_eq!(entries.len(), 2);
     }
 
     #[test]
-    fn parse_single_manifest() {
-        let output = "Manifest 9999999999 / 2026-01-01 00:00:00";
+    fn parse_id_alias() {
+        let output = r#"{"id":"999","date":"public"}"#;
         let entries = parse_manifest_list(output);
         assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].manifest_id, "9999999999");
-        assert_eq!(entries[0].date, "2026-01-01 00:00:00");
+        assert_eq!(entries[0].manifest_id, "999");
     }
 
     #[test]
     fn ignores_non_manifest_lines() {
-        let output = "\
-Some status message
-Connected to Steam
-Manifest 1111111111 / 2026-06-01 10:00:00
-Downloading something
-Manifest 2222222222 / 2026-05-01 09:00:00
-Done.";
-
-        let entries = parse_manifest_list(output);
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].manifest_id, "1111111111");
-        assert_eq!(entries[1].manifest_id, "2222222222");
+        let output = r#"{"type":"log","level":"info","message":"hello"}
+{"type":"done","success":true}
+not json at all"#;
+        assert!(parse_manifest_list(output).is_empty());
     }
 
     #[test]
-    fn ignores_malformed_manifest_lines() {
-        let output = "\
-Manifest not-a-number / 2026-01-01 00:00:00
-Manifest 1111111111 / 2026-06-01 10:00:00
-Manifest / missing id
-Manifest 2222222222 / 2026-05-01 09:00:00";
-
-        let entries = parse_manifest_list(output);
-        assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].manifest_id, "1111111111");
-        assert_eq!(entries[1].manifest_id, "2222222222");
-    }
-
-    #[test]
-    fn handles_whitespace_variations() {
-        let output = "  Manifest 5555555555 / 2026-04-15 14:30:00  ";
-        let entries = parse_manifest_list(output);
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].manifest_id, "5555555555");
-        assert_eq!(entries[0].date, "2026-04-15 14:30:00");
-    }
-
-    #[test]
-    fn manifest_list_entry_serializes() {
-        let entry = ManifestListEntry {
-            manifest_id: "1234567890".to_string(),
-            date: "2026-01-01 00:00:00".to_string(),
-        };
-        let json = serde_json::to_string(&entry).unwrap();
-        assert!(json.contains("\"manifest_id\":\"1234567890\""));
-        assert!(json.contains("\"date\":\"2026-01-01 00:00:00\""));
+    fn parse_empty_manifests_array() {
+        let output = r#"{"type":"manifest_list","manifests":[]}"#;
+        assert!(parse_manifest_list(output).is_empty());
     }
 }
