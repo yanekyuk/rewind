@@ -3,6 +3,7 @@ import { useAuth } from "./hooks/useAuth";
 import { AppShell } from "./components/AppShell";
 import { LoginView } from "./components/LoginView";
 import { GameLibrary } from "./components/GameLibrary";
+import { GameSidebar } from "./components/GameSidebar";
 import { GameDetail } from "./components/GameDetail";
 import { VersionSelect } from "./components/VersionSelect";
 import type { ViewId } from "./types/navigation";
@@ -18,7 +19,6 @@ function App() {
     null,
   );
 
-  // Navigate to library when auth state changes to authenticated
   useEffect(() => {
     if (authenticated) {
       setCurrentView("game-library");
@@ -53,8 +53,7 @@ function App() {
     setCurrentView("auth-gate");
   }, [signOut]);
 
-  // Resolve back action based on current view
-  const canGoBack = currentView !== "game-library";
+  const canGoBack = currentView !== "game-library" && currentView !== "auth-gate";
   const handleBack = useCallback(() => {
     if (currentView === "version-select") {
       handleBackToDetail();
@@ -63,37 +62,56 @@ function App() {
     }
   }, [currentView, handleBackToDetail, handleBackToLibrary]);
 
-  // Auth gate — no shell
   if (!authenticated || currentView === "auth-gate") {
     return <LoginView auth={auth} />;
   }
 
-  // All authenticated views share the shell
+  // Card grid library view
+  if (currentView === "game-library") {
+    return (
+      <AppShell
+        username={auth.username ?? "Steam User"}
+        canGoBack={false}
+        onLibrary={handleBackToLibrary}
+        onSignOut={handleSignOut}
+      >
+        <GameLibrary onSelectGame={handleSelectGame} />
+      </AppShell>
+    );
+  }
+
+  // Game detail / version select — sidebar + main panel
   return (
     <AppShell
       username={auth.username ?? "Steam User"}
       canGoBack={canGoBack}
       onBack={handleBack}
+      onLibrary={handleBackToLibrary}
       onSignOut={handleSignOut}
     >
-      {currentView === "game-library" && (
-        <GameLibrary onSelectGame={handleSelectGame} />
-      )}
-
-      {currentView === "game-detail" && selectedGame && (
-        <GameDetail
-          game={selectedGame}
-          onChangeVersion={handleChangeVersion}
+      <div className="library-layout">
+        <GameSidebar
+          selectedAppId={selectedGame?.appid ?? null}
+          onSelectGame={handleSelectGame}
         />
-      )}
+        <div className="library-layout__main">
+          {selectedGame && currentView === "game-detail" && (
+            <GameDetail
+              key={selectedGame.appid}
+              game={selectedGame}
+              onChangeVersion={handleChangeVersion}
+            />
+          )}
 
-      {currentView === "version-select" && selectedGame && (
-        <VersionSelect
-          game={selectedGame}
-          selectedManifestId={selectedManifestId}
-          onSelectManifest={setSelectedManifestId}
-        />
-      )}
+          {selectedGame && currentView === "version-select" && (
+            <VersionSelect
+              game={selectedGame}
+              selectedManifestId={selectedManifestId}
+              onSelectManifest={setSelectedManifestId}
+            />
+          )}
+        </div>
+      </div>
     </AppShell>
   );
 }

@@ -6,11 +6,12 @@ interface AppShellProps {
   username: string;
   canGoBack: boolean;
   onBack?: () => void;
+  onLibrary: () => void;
   onSignOut: () => void;
   children: ReactNode;
 }
 
-export function AppShell({ username, canGoBack, onBack, onSignOut, children }: AppShellProps) {
+export function AppShell({ username, canGoBack, onBack, onLibrary, onSignOut, children }: AppShellProps) {
   return (
     <div className="app-shell">
       <header className="app-shell__header">
@@ -68,7 +69,7 @@ export function AppShell({ username, canGoBack, onBack, onSignOut, children }: A
             <button className="app-shell__nav-arrow" type="button" disabled title="Forward">
               <ArrowRight size={18} />
             </button>
-            <button className="app-shell__nav-tab app-shell__nav-tab--active" type="button">
+            <button className="app-shell__nav-tab app-shell__nav-tab--active" type="button" onClick={onLibrary}>
               Library
             </button>
           </div>
