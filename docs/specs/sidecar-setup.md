@@ -21,7 +21,7 @@ The SteamKit sidecar is a .NET console application that wraps SteamKit2 function
 
 ### Building the Sidecar
 
-1. **Source directory**: `sidecar/RewindSidecar/`
+1. **Source directory**: `sidecar/SteamKitSidecar/`
 2. **Build command**: `dotnet publish -c Release -o dist/{platform}` (for each platform)
 3. **Self-contained**: The sidecar is published as a self-contained executable (no .NET runtime dependency for end users)
 4. **Output binary names**:
@@ -111,7 +111,7 @@ The function includes a unit test verifying the sidecar name is correct.
 
 ### Making Changes to the Sidecar
 
-1. Edit C# files in `sidecar/RewindSidecar/`
+1. Edit C# files in `sidecar/SteamKitSidecar/`
 2. Rebuild: `./scripts/build-sidecar.sh`
 3. Restart the Tauri dev server
 
@@ -127,7 +127,7 @@ cargo test
 
 **C# tests** (sidecar logic):
 ```bash
-cd sidecar/RewindSidecar
+cd sidecar/SteamKitSidecar
 dotnet test
 ```
 
@@ -177,7 +177,7 @@ License file `sidecar/LICENSE` is included in the sidecar source and referenced 
 
 ## Acceptance Criteria
 
-- [x] `sidecar/RewindSidecar/` compiles with `dotnet publish` for all platforms
+- [x] `sidecar/SteamKitSidecar/` compiles with `dotnet publish` for all platforms
 - [x] `scripts/build-sidecar.sh` builds and places binaries correctly
 - [x] `tauri.conf.json` has `bundle.externalBin` entry for SteamKit sidecar
 - [x] `src-tauri/src/infrastructure/sidecar.rs` has `spawn_sidecar()` function

@@ -34,6 +34,6 @@
     "externalBin": [
       "binaries/SteamKitSidecar"
     ],
-    "resources": []
+    "resources": ["resources/STEAMKIT-LICENSE"]
   }
 }

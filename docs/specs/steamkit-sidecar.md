@@ -10,7 +10,7 @@ updated: 2026-03-30
 
 Replace the DepotDownloader sidecar with a custom .NET console application built on SteamKit2. The new sidecar communicates via newline-delimited JSON (NDJSON) on stdout, eliminating fragile text parsing.
 
-### 1. .NET Sidecar Application (RewindSidecar)
+### 1. .NET Sidecar Application (SteamKitSidecar)
 
 A new .NET 8 console app in `sidecar/` at the project root. It uses SteamKit2 (LGPL v2.1) to interact with Steam directly.
 
@@ -38,7 +38,7 @@ Each line is a complete JSON object. The Rust infrastructure layer reads lines a
 
 ### 2. Rust Infrastructure Layer Changes
 
-- **`infrastructure/sidecar.rs`** -- Replace DepotDownloader spawning with RewindSidecar spawning. The sidecar binary name changes from `DepotDownloader` to `RewindSidecar`. Update the `SIDECAR_NAME` constant and spawn function.
+- **`infrastructure/sidecar.rs`** -- Replace DepotDownloader spawning with SteamKitSidecar spawning. The sidecar binary name changes from `DepotDownloader` to `SteamKitSidecar`. Update the `SIDECAR_NAME` constant and spawn function.
 - **`infrastructure/depot_downloader.rs`** -- Rename to `infrastructure/steam_operations.rs`. Replace text parsing with JSON deserialization of NDJSON output. Each operation (list_manifests, get_manifest, download) reads lines from stdout and deserializes them into typed Rust structs.
 - Remove `is_guard_prompt`, `write_guard_code`, and `build_authenticated_args` -- auth is handled by the sidecar natively (login command + session persistence).
 
@@ -71,7 +71,7 @@ enum SidecarMessage {
 
 - **`scripts/download-sidecar.sh`** -- Replace with `scripts/build-sidecar.sh` that builds the .NET project and copies the output to `src-tauri/binaries/`.
 - **`package.json`** -- Update `ensure-sidecar` script to call the new build script.
-- **`tauri.conf.json`** -- Change `externalBin` from `DepotDownloader` to `RewindSidecar`.
+- **`tauri.conf.json`** -- Change `externalBin` from `DepotDownloader` to `SteamKitSidecar`.
 - **`.gitignore`** -- Keep `src-tauri/binaries/` ignored. Add .NET build output directories (`sidecar/bin/`, `sidecar/obj/`).
 
 ### 6. Licensing Changes
@@ -88,7 +88,7 @@ enum SidecarMessage {
 
 ### 8. IPC Command Changes
 
-- **`list_manifests`** -- Internal implementation switches from spawning DepotDownloader + text parsing to spawning RewindSidecar + JSON deserialization. The command signature (app_id, depot_id) and return type (Vec<ManifestListEntry>) remain identical.
+- **`list_manifests`** -- Internal implementation switches from spawning DepotDownloader + text parsing to spawning SteamKitSidecar + JSON deserialization. The command signature (app_id, depot_id) and return type (Vec<ManifestListEntry>) remain identical.
 
 ## Constraints
 
@@ -110,9 +110,9 @@ enum SidecarMessage {
 - [ ] `domain/sidecar.rs` defines typed message types for the NDJSON protocol
 - [ ] `domain/manifest/list_parser.rs` and `domain/manifest/parser.rs` are removed
 - [ ] `domain/auth.rs` no longer has `to_depot_args()` method
-- [ ] `infrastructure/sidecar.rs` spawns RewindSidecar instead of DepotDownloader
+- [ ] `infrastructure/sidecar.rs` spawns SteamKitSidecar instead of DepotDownloader
 - [ ] `infrastructure/steam_operations.rs` replaces `depot_downloader.rs` with JSON-based operations
-- [ ] `tauri.conf.json` references RewindSidecar in `externalBin`
+- [ ] `tauri.conf.json` references SteamKitSidecar in `externalBin`
 - [ ] `scripts/build-sidecar.sh` builds the .NET project for the current platform
 - [ ] `package.json` `ensure-sidecar` calls the new build script
 - [ ] DepotDownloader GPL-2.0 license file is removed
