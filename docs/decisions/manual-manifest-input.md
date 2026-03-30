@@ -1,39 +1,45 @@
 ---
-title: "Manual Manifest ID Input"
+title: "Version Selection"
 type: decision
-tags: [manifest, version-discovery, steamdb, ux]
+tags: [manifest, version-discovery, steamdb, ux, depotdownloader, auth]
 created: 2026-03-30
 updated: 2026-03-30
 ---
 
-# Manual Manifest ID Input
+# Version Selection
 
 ## Context
 
 To downgrade a game, the user must specify which version to downgrade to. This requires a manifest ID -- a numeric identifier for a specific snapshot of a depot's contents.
 
-Steam has no public API for listing historical manifests for a depot. The only reliable source is [SteamDB](https://steamdb.info/), which tracks manifest history through its own data collection.
+Steam has no public API for listing historical manifests for a depot. However, DepotDownloader (via SteamKit2) can list available manifests for depots the authenticated user owns.
 
 ## Decision
 
-In the MVP, users manually input the target manifest ID. The app displays the current depot ID to help users find the correct SteamDB page.
+**Updated from MVP:** The app now fetches and displays available manifests using DepotDownloader, replacing the manual-only manifest input. Manual input is retained as a fallback.
+
+The "Select Version" step:
+1. Prompts for Steam credentials (username/password) inline
+2. Calls DepotDownloader to list available manifests for the game's depot
+3. Displays a selectable list of manifests with dates
+4. Also allows manual manifest ID entry as a fallback
 
 ## Rationale
 
-- **No official API**: Steam/Valve does not expose an endpoint for historical manifest listings.
-- **SteamDB scraping is fragile**: SteamDB requires authentication, uses anti-scraping measures, and its HTML structure can change without notice. Building a scraper would create a brittle dependency.
-- **SteamKit2 manifest listing**: DepotDownloader/SteamKit2 can list manifests for depots the user owns, but the interface is not straightforward and requires additional authentication handling. This is a candidate for post-MVP improvement.
-- **Acceptable UX trade-off**: The target audience (gamers who want to downgrade) is generally comfortable navigating SteamDB. The manifest ID is a copy-paste operation.
+- **DepotDownloader supports manifest listing**: When authenticated, DepotDownloader can list all manifests for depots the user owns. This eliminates the need for users to visit SteamDB.
+- **Better UX**: Users see available versions directly in the app rather than navigating to an external website.
+- **Auth required**: Manifest listing requires Steam credentials, which the app collects inline and passes to DepotDownloader. Credentials are never persisted by Rewind; DepotDownloader's `-remember-password` flag handles session caching.
+- **Manual fallback preserved**: Users who already know their manifest ID (e.g., from SteamDB or community guides) can still enter it directly.
 
-## User Workflow
+## Previous Decision (MVP)
 
-1. Rewind shows the installed game's depot ID.
-2. User navigates to `https://steamdb.info/depot/<depotid>/manifests/`.
-3. User finds the desired version and copies the manifest ID.
-4. User pastes the manifest ID into Rewind.
+In the MVP, users manually input the target manifest ID. This was due to:
+- SteamKit2 manifest listing not being straightforward
+- Additional authentication handling being needed
+- Manual input being an acceptable UX trade-off for the target audience
 
 ## Future Improvements
 
-- Integrate SteamKit2's manifest listing capability to show available versions directly in the app.
 - Cache known manifest-to-version mappings submitted by the community.
 - Parse Steam news feeds or SteamDB patch notes to map build IDs to human-readable version names.
+- Support multi-depot games (show depot selector or list all depots).

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { StepIndicator } from "./components/StepIndicator";
 import { StepView } from "./components/StepView";
 import { GameSelect } from "./components/GameSelect";
+import { ManifestSelect } from "./components/ManifestSelect";
 import { STEPS } from "./steps";
 import type { GameInfo } from "./types/game";
 import "./App.css";
@@ -9,11 +10,42 @@ import "./App.css";
 function App() {
   const [currentStep, setCurrentStep] = useState(0);
   const [selectedGame, setSelectedGame] = useState<GameInfo | null>(null);
+  const [selectedManifestId, setSelectedManifestId] = useState<string | null>(
+    null,
+  );
 
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === STEPS.length - 1;
-  const isGameSelectStep = STEPS[currentStep].id === "select-game";
-  const isNextDisabled = isLastStep || (isGameSelectStep && selectedGame === null);
+  const currentStepId = STEPS[currentStep].id;
+  const isGameSelectStep = currentStepId === "select-game";
+  const isVersionSelectStep = currentStepId === "select-version";
+  const isNextDisabled =
+    isLastStep ||
+    (isGameSelectStep && selectedGame === null) ||
+    (isVersionSelectStep && selectedManifestId === null);
+
+  const renderStepContent = () => {
+    if (isGameSelectStep) {
+      return (
+        <GameSelect
+          selectedGame={selectedGame}
+          onSelectGame={setSelectedGame}
+        />
+      );
+    }
+
+    if (isVersionSelectStep && selectedGame) {
+      return (
+        <ManifestSelect
+          selectedGame={selectedGame}
+          selectedManifestId={selectedManifestId}
+          onSelectManifest={setSelectedManifestId}
+        />
+      );
+    }
+
+    return <StepView stepIndex={currentStep} />;
+  };
 
   return (
     <div className="app">
@@ -28,14 +60,7 @@ function App() {
         </aside>
 
         <main className="app-content">
-          {isGameSelectStep ? (
-            <GameSelect
-              selectedGame={selectedGame}
-              onSelectGame={setSelectedGame}
-            />
-          ) : (
-            <StepView stepIndex={currentStep} />
-          )}
+          {renderStepContent()}
 
           <div className="app-nav">
             <button

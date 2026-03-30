@@ -20,5 +20,6 @@
 //! - Manifest file locking (chattr on Linux, chflags on macOS, SetFileAttributes on Windows)
 //! - OS-level notifications
 
+pub mod depot_downloader;
 pub mod sidecar;
 pub mod steam;

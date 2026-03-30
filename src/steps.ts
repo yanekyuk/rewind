@@ -1,6 +1,6 @@
 export type StepId =
   | "select-game"
-  | "enter-manifest"
+  | "select-version"
   | "comparing"
   | "downloading"
   | "applying"
@@ -19,10 +19,10 @@ export const STEPS: Step[] = [
     description: "Choose an installed Steam game to downgrade.",
   },
   {
-    id: "enter-manifest",
-    label: "Enter Manifest ID",
+    id: "select-version",
+    label: "Select Version",
     description:
-      "Paste the target manifest ID from SteamDB for the version you want.",
+      "Choose a target version from available manifests or enter a manifest ID manually.",
   },
   {
     id: "comparing",
