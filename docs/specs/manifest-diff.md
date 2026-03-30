@@ -1,14 +1,14 @@
 ---
 title: "Manifest Diff"
 type: spec
-tags: [manifest, diff, domain, filelist, depotdownloader]
+tags: [manifest, diff, domain, filelist, steamkit]
 created: 2026-03-30
 updated: 2026-03-30
 ---
 
 ## Behavior
 
-Compare two `DepotManifest` structs (current and target) by file name and SHA hash to identify which files need downloading, adding, or removing during a downgrade. Produce a `ManifestDiff` result and generate a filelist suitable for DepotDownloader's `-filelist` flag.
+Compare two `DepotManifest` structs (current and target) by file name and SHA hash to identify which files need downloading, adding, or removing during a downgrade. Produce a `ManifestDiff` result and generate a filelist suitable for the SteamKit sidecar's `download` command with the `--filelist` option.
 
 ### Diffing algorithm
 
@@ -23,7 +23,7 @@ This yields O(n + m) comparison where n and m are the entry counts of the two ma
 
 ### Filelist generation
 
-Produce a `Vec<String>` of file paths containing all **changed** and **added** files. These are the files DepotDownloader needs to download via its `-filelist` flag. **Removed** files are not included (they are handled during the apply step by deleting them from the game directory).
+Produce a `Vec<String>` of file paths containing all **changed** and **added** files. These are the files the SteamKit sidecar needs to download via its `--filelist` option. **Removed** files are not included (they are handled during the apply step by deleting them from the game directory).
 
 ### Public API
 

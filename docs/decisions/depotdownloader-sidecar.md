@@ -1,43 +1,66 @@
 ---
-title: "DepotDownloader as Tauri Sidecar"
+title: "SteamKit2 Migration from DepotDownloader"
 type: decision
-tags: [depotdownloader, sidecar, tauri, architecture, dependencies]
+tags: [steamkit, sidecar, tauri, architecture, dependencies, licensing]
 created: 2026-03-30
 updated: 2026-03-30
 ---
 
-# DepotDownloader as Tauri Sidecar
+# SteamKit2 Migration from DepotDownloader
 
 ## Context
 
-Rewind needs DepotDownloader to download game files from Steam's CDN. DepotDownloader is a .NET application, while Rewind's backend is Rust (Tauri).
+Originally, Rewind used [DepotDownloader](https://github.com/SteamRE/DepotDownloader) to download game files from Steam's CDN. However, the approach had limitations:
 
-Options considered:
+- DepotDownloader is a command-line tool with fragile text output parsing
+- No native 2FA support (required stdin relay workaround)
+- Cannot enumerate available manifests for a depot (user must provide manifest IDs manually)
+- GPL-2.0 licensing adds compliance burden
+- Limited visibility into Steam operations
 
-1. **Require users to install DepotDownloader and .NET separately** -- poor UX, high support burden.
-2. **Bundle DepotDownloader as a Tauri sidecar** -- self-contained binary, no external dependencies.
-3. **Reimplement Steam download protocol in Rust** -- large effort, high risk, would eliminate the dependency entirely.
+We evaluated two options:
+
+1. **Continue with DepotDownloader**: Accept text parsing complexity and manifest enumeration gap.
+2. **Migrate to SteamKit2 sidecar**: Use the .NET library directly via a custom sidecar for direct control over Steam operations.
 
 ## Decision
 
-Bundle DepotDownloader as a Tauri sidecar using its self-contained (ahead-of-time compiled) build.
+Migrate to [SteamKit2](https://github.com/DoctorMcKay/SteamKit) as a native Tauri sidecar written in C#/.NET. The sidecar handles all Steam operations and communicates with Rewind via newline-delimited JSON (NDJSON).
 
 ## Rationale
 
-- The self-contained build of DepotDownloader includes the .NET runtime, so users do not need to install .NET separately.
-- Tauri's sidecar mechanism handles bundling, extraction, and path resolution for platform-specific binaries.
-- Each platform binary is approximately 33 MB -- acceptable for a desktop application that downloads multi-GB game files.
-- Subprocess interaction (spawn, stdin/stdout piping, cancellation) is well-supported in Rust via `tokio::process`.
+**Direct Control**: SteamKit2 is the .NET library DepotDownloader is built on. Using it directly eliminates:
+- Fragile stdout text parsing (now structured JSON)
+- stdin relay workarounds for 2FA (native support in sidecar)
+
+**Manifest Enumeration**: The sidecar implements `list-manifests` command to enumerate all available manifests for a depot. This was a critical gap in DepotDownloader and is now addressed.
+
+**Session Persistence**: The sidecar can cache authenticated sessions across commands, reducing login overhead.
+
+**Structured Communication**: NDJSON protocol with typed messages (`type` field) makes integration more reliable and maintainable.
+
+**Licensing Improvement**: SteamKit2 is LGPL v2.1 (more permissive than DepotDownloader's GPL-2.0). While Rewind will remain GPL-2.0 for other reasons, using LGPL dependencies is cleaner legally.
+
+## Implementation
+
+The sidecar is a .NET console application that:
+- Receives commands: `login`, `list-manifests`, `get-manifest`, `download`
+- Outputs newline-delimited JSON on stdout
+- Handles 2FA prompts natively (returns `guard_prompt` messages, awaits responses)
+- Manages session state (authentication tokens, cached manifests)
+
+See [docs/domain/steamkit-sidecar.md](../domain/steamkit-sidecar.md) and [docs/specs/sidecar-setup.md](../specs/sidecar-setup.md).
 
 ## Consequences
 
-- **Binary size**: Each platform build includes ~33 MB for the DepotDownloader sidecar on top of the Tauri app itself.
-- **Progress parsing**: Rewind must parse DepotDownloader's stdout to extract download progress and relay it to the frontend.
-- **Error handling**: Exit codes and stderr must be parsed and translated into user-friendly messages.
-- **Updates**: When DepotDownloader releases a new version, Rewind must update the bundled binary and test compatibility.
-- **Cancellation**: Long-running downloads must be cancellable. The Rust backend must handle subprocess termination cleanly.
+- **Sidecar maintenance**: Must maintain C#/.NET sidecar codebase alongside Rust backend.
+- **Session management**: Rust layer must handle guard prompt exchanges and session file persistence.
+- **Binary size**: SteamKit2 is larger than DepotDownloader; sidecar binary ~50-60 MB per platform.
+- **Deployment**: Users must have .NET 9 SDK to build from source (pre-built binaries do not require .NET).
+- **Testing**: Sidecar logic requires separate test suite in C#.
 
 ## Alternatives Rejected
 
-- **User-installed DepotDownloader**: Unacceptable UX friction. Users should not need to install .NET or manage separate tools.
-- **Rust reimplementation of SteamKit2**: The Steam download protocol is complex (authentication, CDN selection, chunk downloading, decryption). This is a future consideration but far too risky for the MVP.
+- **Continue with DepotDownloader**: Text parsing is fragile; manifest enumeration limitation cannot be worked around.
+- **Pure Rust reimplementation of Steam protocol**: Too large a scope for MVP; high risk of protocol changes breaking the implementation.
+- **Direct SteamKit2 Rust bindings**: Binding .NET library to Rust adds complexity; sidecar approach is cleaner and more maintainable.

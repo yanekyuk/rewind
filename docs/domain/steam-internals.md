@@ -89,3 +89,9 @@ Steam also supports additional library folders configured in `libraryfolders.vdf
 When Steam starts (or periodically while running), it compares the locally recorded `buildid` in each ACF file against the latest build ID from Steam's servers. If the local value is lower, Steam queues an update.
 
 Steam may also validate file integrity through its internal database, independent of the ACF file. This is an area that needs further investigation -- the manifest locking strategy (see [decisions/no-backup-mvp](../decisions/no-backup-mvp.md)) works around this by making the ACF file immutable.
+
+## SteamKit2 Integration
+
+Rewind uses [SteamKit2](https://github.com/DoctorMcKay/SteamKit) via a .NET sidecar to interact with Steam. The sidecar handles authentication and operations (manifest enumeration, metadata retrieval, file downloads) and communicates with the Rust backend via structured JSON messages.
+
+See [domain/steamkit-sidecar.md](steamkit-sidecar.md) and [specs/sidecar-setup.md](../specs/sidecar-setup.md) for implementation details.
