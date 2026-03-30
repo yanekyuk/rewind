@@ -54,6 +54,7 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![greet, list_games])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

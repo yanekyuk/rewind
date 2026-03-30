@@ -10,6 +10,7 @@
 //!
 //! # Submodules
 //!
+//! - [`sidecar`] — DepotDownloader sidecar binary resolution
 //! - `steam` — Steam installation path detection, library folder discovery, appmanifest scanning
 //!
 //! # Planned Submodules
@@ -19,4 +20,5 @@
 //! - Manifest file locking (chattr on Linux, chflags on macOS, SetFileAttributes on Windows)
 //! - OS-level notifications
 
+pub mod sidecar;
 pub mod steam;
