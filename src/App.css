@@ -214,3 +214,113 @@
   background-color: var(--color-accent-hover);
   border-color: var(--color-accent-hover);
 }
+
+/* Game select */
+.game-select {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.game-select__loading,
+.game-select__empty {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+.game-select__error {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.game-select__error-message {
+  color: #ef4444;
+  font-size: 14px;
+}
+
+.game-select__retry-button {
+  padding: 6px 16px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.game-select__retry-button:hover {
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-text-muted);
+}
+
+/* Game list */
+.game-list {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  min-height: 0;
+  flex: 1;
+}
+
+.game-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  width: 100%;
+}
+
+.game-row:hover {
+  background-color: var(--color-surface-hover);
+}
+
+.game-row--selected {
+  background-color: var(--color-accent-dim);
+  border-color: var(--color-accent);
+}
+
+.game-row--selected:hover {
+  background-color: var(--color-accent-dim);
+}
+
+.game-row__name {
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.game-row__meta {
+  display: flex;
+  gap: 16px;
+  flex-shrink: 0;
+  margin-left: 16px;
+}
+
+.game-row__appid,
+.game-row__buildid {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
