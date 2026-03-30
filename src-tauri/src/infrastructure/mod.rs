@@ -8,10 +8,15 @@
 //! The infrastructure layer **implements interfaces defined in the domain layer**.
 //! It is the only layer that performs I/O or interacts with the operating system.
 //!
+//! # Submodules
+//!
+//! - `steam` — Steam installation path detection, library folder discovery, appmanifest scanning
+//!
 //! # Planned Submodules
 //!
 //! - Filesystem I/O (reading ACF files, copying game files)
 //! - DepotDownloader subprocess management (spawn, stdin/stdout, cancellation)
-//! - Steam installation path detection (platform-specific)
 //! - Manifest file locking (chattr on Linux, chflags on macOS, SetFileAttributes on Windows)
 //! - OS-level notifications
+
+pub mod steam;
