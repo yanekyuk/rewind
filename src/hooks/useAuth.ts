@@ -62,7 +62,13 @@ export function useAuth(): UseAuthResult {
         setAuthenticated(true);
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : String(err);
+          err instanceof Error
+            ? err.message
+            : typeof err === "string"
+              ? err
+              : typeof err === "object" && err !== null
+                ? String(Object.values(err as Record<string, unknown>)[0] ?? JSON.stringify(err))
+                : String(err);
         setError(message);
       } finally {
         setSubmitting(false);

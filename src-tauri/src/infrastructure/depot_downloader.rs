@@ -13,6 +13,29 @@ use crate::error::RewindError;
 
 use super::sidecar::spawn_sidecar;
 
+/// Extract a human-readable error message from sidecar NDJSON stderr.
+///
+/// The sidecar emits errors as JSON lines like:
+/// `{"type":"error","code":"AUTH_ERROR","message":"Authentication failed with result RateLimitExceeded."}`
+///
+/// This function parses each line and returns the last `message` field found,
+/// falling back to the raw text if parsing fails.
+fn extract_sidecar_error(stderr: &str) -> String {
+    let mut last_message: Option<String> = None;
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            if let Some(msg) = parsed.get("message").and_then(|v| v.as_str()) {
+                last_message = Some(msg.to_string());
+            }
+        }
+    }
+    last_message.unwrap_or_else(|| stderr.trim().to_string())
+}
+
 /// Authenticate with Steam via the SteamKit sidecar.
 ///
 /// Spawns the sidecar `login` command which handles the full auth flow
@@ -62,7 +85,7 @@ pub async fn login(
                     let detail = if stderr_buffer.is_empty() {
                         "Steam authentication failed".to_string()
                     } else {
-                        stderr_buffer.trim().to_string()
+                        extract_sidecar_error(&stderr_buffer)
                     };
                     return Err(RewindError::AuthFailed(detail));
                 }
@@ -147,11 +170,7 @@ pub async fn list_manifests(
                             payload.code
                         )
                     } else {
-                        format!(
-                            "SteamKit sidecar exited with code {:?}: {}",
-                            payload.code,
-                            stderr_buffer.trim()
-                        )
+                        extract_sidecar_error(&stderr_buffer)
                     };
                     return Err(RewindError::Infrastructure(detail));
                 }
