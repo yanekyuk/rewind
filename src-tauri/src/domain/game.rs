@@ -84,6 +84,7 @@ mod tests {
             installed_depots: depots,
             target_build_id: None,
             bytes_to_download: None,
+            full_validate_after_next_update: None,
         }
     }
 

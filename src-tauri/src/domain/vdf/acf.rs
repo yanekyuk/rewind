@@ -12,6 +12,21 @@ pub struct AppState {
     pub installed_depots: HashMap<String, InstalledDepot>,
     pub target_build_id: Option<String>,
     pub bytes_to_download: Option<String>,
+    pub full_validate_after_next_update: Option<String>,
+}
+
+/// Parameters for patching an ACF manifest to prevent Steam from detecting
+/// a version mismatch after a downgrade.
+#[derive(Debug, Clone)]
+pub struct AcfPatchParams {
+    /// The latest build ID (from Steam servers, not the target version).
+    pub latest_buildid: String,
+    /// The latest manifest ID for the depot being downgraded.
+    pub latest_manifest: String,
+    /// The latest depot size value.
+    pub latest_size: String,
+    /// The depot ID being downgraded.
+    pub depot_id: String,
 }
 
 /// A single installed depot entry.
@@ -52,6 +67,8 @@ impl AppState {
 
         let target_build_id = map_get_str(map, "TargetBuildID").map(|s| s.to_string());
         let bytes_to_download = map_get_str(map, "BytesToDownload").map(|s| s.to_string());
+        let full_validate_after_next_update =
+            map_get_str(map, "FullValidateAfterNextUpdate").map(|s| s.to_string());
 
         let installed_depots = parse_installed_depots(map)?;
 
@@ -64,7 +81,30 @@ impl AppState {
             installed_depots,
             target_build_id,
             bytes_to_download,
+            full_validate_after_next_update,
         })
+    }
+
+    /// Patch this AppState for a downgrade operation.
+    ///
+    /// Per the downgrade process rules (docs/domain/downgrade-process.md):
+    /// - Set `buildid` and depot `manifest`/`size` to the **latest** values
+    ///   (not the target version) so Steam thinks the game is up to date.
+    /// - Set `StateFlags` to `4` (fully installed).
+    /// - Set `TargetBuildID` to `0` (no pending update).
+    /// - Set `BytesToDownload` to `0` (no pending download).
+    /// - Set `FullValidateAfterNextUpdate` to `0` (prevent validation).
+    pub fn patch_for_downgrade(&mut self, params: &AcfPatchParams) {
+        self.buildid = params.latest_buildid.clone();
+        self.state_flags = "4".to_string();
+        self.target_build_id = Some("0".to_string());
+        self.bytes_to_download = Some("0".to_string());
+        self.full_validate_after_next_update = Some("0".to_string());
+
+        if let Some(depot) = self.installed_depots.get_mut(&params.depot_id) {
+            depot.manifest = params.latest_manifest.clone();
+            depot.size = params.latest_size.clone();
+        }
     }
 
     /// Convert this AppState back into a VdfDocument for serialization.
@@ -83,6 +123,13 @@ impl AppState {
 
         if let Some(ref bytes) = self.bytes_to_download {
             map.push(("BytesToDownload".into(), VdfValue::String(bytes.clone())));
+        }
+
+        if let Some(ref val) = self.full_validate_after_next_update {
+            map.push((
+                "FullValidateAfterNextUpdate".into(),
+                VdfValue::String(val.clone()),
+            ));
         }
 
         // Build InstalledDepots map
@@ -146,4 +193,151 @@ fn parse_installed_depots(map: &VdfMap) -> Result<HashMap<String, InstalledDepot
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_app_state() -> AppState {
+        let mut depots = HashMap::new();
+        depots.insert(
+            "3321461".to_string(),
+            InstalledDepot {
+                manifest: "7446650175280810671".to_string(),
+                size: "133575233011".to_string(),
+            },
+        );
+        AppState {
+            appid: "3321460".to_string(),
+            name: "Crimson Desert".to_string(),
+            buildid: "22560074".to_string(),
+            installdir: "Crimson Desert".to_string(),
+            state_flags: "4".to_string(),
+            installed_depots: depots,
+            target_build_id: None,
+            bytes_to_download: None,
+            full_validate_after_next_update: None,
+        }
+    }
+
+    #[test]
+    fn patch_for_downgrade_sets_buildid_to_latest() {
+        let mut app = make_app_state();
+        let params = AcfPatchParams {
+            latest_buildid: "99999999".to_string(),
+            latest_manifest: "8888888888888888888".to_string(),
+            latest_size: "200000000000".to_string(),
+            depot_id: "3321461".to_string(),
+        };
+
+        app.patch_for_downgrade(&params);
+
+        assert_eq!(app.buildid, "99999999");
+    }
+
+    #[test]
+    fn patch_for_downgrade_sets_manifest_and_size_to_latest() {
+        let mut app = make_app_state();
+        let params = AcfPatchParams {
+            latest_buildid: "99999999".to_string(),
+            latest_manifest: "8888888888888888888".to_string(),
+            latest_size: "200000000000".to_string(),
+            depot_id: "3321461".to_string(),
+        };
+
+        app.patch_for_downgrade(&params);
+
+        let depot = app.installed_depots.get("3321461").unwrap();
+        assert_eq!(depot.manifest, "8888888888888888888");
+        assert_eq!(depot.size, "200000000000");
+    }
+
+    #[test]
+    fn patch_for_downgrade_sets_state_flags_to_4() {
+        let mut app = make_app_state();
+        app.state_flags = "1".to_string(); // simulate non-installed state
+
+        let params = AcfPatchParams {
+            latest_buildid: "99999999".to_string(),
+            latest_manifest: "8888888888888888888".to_string(),
+            latest_size: "200000000000".to_string(),
+            depot_id: "3321461".to_string(),
+        };
+
+        app.patch_for_downgrade(&params);
+
+        assert_eq!(app.state_flags, "4");
+    }
+
+    #[test]
+    fn patch_for_downgrade_clears_update_fields() {
+        let mut app = make_app_state();
+        app.target_build_id = Some("22570000".to_string());
+        app.bytes_to_download = Some("5000000".to_string());
+        app.full_validate_after_next_update = Some("1".to_string());
+
+        let params = AcfPatchParams {
+            latest_buildid: "99999999".to_string(),
+            latest_manifest: "8888888888888888888".to_string(),
+            latest_size: "200000000000".to_string(),
+            depot_id: "3321461".to_string(),
+        };
+
+        app.patch_for_downgrade(&params);
+
+        assert_eq!(app.target_build_id, Some("0".to_string()));
+        assert_eq!(app.bytes_to_download, Some("0".to_string()));
+        assert_eq!(app.full_validate_after_next_update, Some("0".to_string()));
+    }
+
+    #[test]
+    fn patch_for_downgrade_ignores_missing_depot() {
+        let mut app = make_app_state();
+        let params = AcfPatchParams {
+            latest_buildid: "99999999".to_string(),
+            latest_manifest: "8888888888888888888".to_string(),
+            latest_size: "200000000000".to_string(),
+            depot_id: "9999999".to_string(), // non-existent depot
+        };
+
+        app.patch_for_downgrade(&params);
+
+        // buildid and flags should still be patched
+        assert_eq!(app.buildid, "99999999");
+        assert_eq!(app.state_flags, "4");
+        // original depot should be unchanged
+        let depot = app.installed_depots.get("3321461").unwrap();
+        assert_eq!(depot.manifest, "7446650175280810671");
+    }
+
+    #[test]
+    fn patch_for_downgrade_round_trips_through_vdf() {
+        let mut app = make_app_state();
+        let params = AcfPatchParams {
+            latest_buildid: "99999999".to_string(),
+            latest_manifest: "8888888888888888888".to_string(),
+            latest_size: "200000000000".to_string(),
+            depot_id: "3321461".to_string(),
+        };
+
+        app.patch_for_downgrade(&params);
+
+        let doc = app.to_vdf();
+        let serialized = super::super::serialize(&doc);
+        let reparsed_doc = super::super::parse(&serialized).unwrap();
+        let reparsed = AppState::from_vdf(&reparsed_doc).unwrap();
+
+        assert_eq!(reparsed.buildid, "99999999");
+        assert_eq!(reparsed.state_flags, "4");
+        assert_eq!(reparsed.target_build_id, Some("0".to_string()));
+        assert_eq!(reparsed.bytes_to_download, Some("0".to_string()));
+        assert_eq!(
+            reparsed.full_validate_after_next_update,
+            Some("0".to_string())
+        );
+        let depot = reparsed.installed_depots.get("3321461").unwrap();
+        assert_eq!(depot.manifest, "8888888888888888888");
+        assert_eq!(depot.size, "200000000000");
+    }
 }
