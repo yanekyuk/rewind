@@ -3,7 +3,9 @@ using SteamKit2;
 namespace SteamKitSidecar.Commands;
 
 /// <summary>
-/// Handles the 'list-manifests' command: enumerate historical manifest IDs for a depot.
+/// Handles the 'list-manifests' command: enumerate manifest IDs for a depot.
+/// Uses PICSGetProductInfo to retrieve the current public manifest and any
+/// branch-specific manifests from the depot's PICS data.
 /// </summary>
 public static class ListManifestsCommand
 {
@@ -17,13 +19,8 @@ public static class ListManifestsCommand
 
             try
             {
-                JsonOutput.Info($"Requesting manifest history for app {appId}, depot {depotId}...");
+                JsonOutput.Info($"Requesting product info for app {appId}...");
 
-                // Request the depot's PICS product info to get the current manifest
-                // Then use GetDepotDecryptionKey and request CDN auth tokens
-                var depotInfo = await session.Apps.GetDepotDecryptionKey(depotId, appId);
-
-                // Use PICSGetProductInfo to get manifest information
                 var productInfoRequest = new SteamApps.PICSRequest(appId);
                 var productInfo = await session.Apps.PICSGetProductInfo(
                     new List<SteamApps.PICSRequest> { productInfoRequest },
@@ -38,33 +35,52 @@ public static class ListManifestsCommand
                     {
                         if (result.Apps.TryGetValue(appId, out var appInfo))
                         {
-                            // Navigate the KeyValues tree: depots -> depotId -> manifests -> public
                             var depots = appInfo.KeyValues["depots"];
                             var depot = depots[depotId.ToString()];
-                            var manifestsSection = depot["manifests"];
-                            var publicManifest = manifestsSection["public"];
 
-                            if (publicManifest != KeyValue.Invalid && publicManifest.Value != null)
+                            if (depot == KeyValue.Invalid)
                             {
-                                manifests.Add(new ManifestListItem
-                                {
-                                    Id = publicManifest.Value,
-                                    Date = "", // PICS doesn't provide historical dates for the current manifest
-                                });
+                                JsonOutput.Warn($"Depot {depotId} not found in app {appId} PICS data");
+                                continue;
                             }
 
-                            // Check for historical manifests via the encryptedmanifests or history sections
-                            // Steam's PICS data doesn't always include full history via this endpoint.
-                            // For full history, we need to use the CDN manifest request codes.
+                            // Debug: dump depot keys to see structure
+                            var depotKeys = string.Join(", ", depot.Children.Select(c => c.Name));
+                            JsonOutput.Info($"Depot {depotId} keys: [{depotKeys}]");
+
+                            var manifestsSection = depot["manifests"];
+                            if (manifestsSection != KeyValue.Invalid)
+                            {
+                                var childDescs = manifestsSection.Children.Select(c =>
+                                {
+                                    if (c.Value != null)
+                                        return $"{c.Name}={c.Value}";
+                                    var nested = string.Join(",", c.Children.Select(cc => $"{cc.Name}={cc.Value}"));
+                                    return $"{c.Name}=({nested})";
+                                });
+                                JsonOutput.Info($"manifests children: [{string.Join(", ", childDescs)}]");
+
+                                foreach (var branch in manifestsSection.Children)
+                                {
+                                    // Branch may have Value directly or a nested "gid" child
+                                    var manifestId = branch.Value ?? branch["gid"]?.Value;
+                                    if (manifestId != null)
+                                    {
+                                        manifests.Add(new ManifestListItem
+                                        {
+                                            Id = manifestId,
+                                            Date = branch.Name ?? "unknown",
+                                        });
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                JsonOutput.Warn($"No 'manifests' section found in depot {depotId}");
+                            }
                         }
                     }
                 }
-
-                // Also try to get historical manifests via SteamContent
-                // SteamKit2 supports GetManifestRequestCode which we need for downloading,
-                // but for listing, we rely on PICS data which shows the current public manifest.
-                // Full historical manifest enumeration requires PICSGetChangesSince or
-                // direct content server queries.
 
                 JsonOutput.ManifestList(manifests);
                 JsonOutput.Done(true);

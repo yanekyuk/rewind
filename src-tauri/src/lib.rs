@@ -17,13 +17,14 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-/// Store Steam credentials in memory for the current session.
+/// Authenticate with Steam and store credentials for the session.
 ///
-/// Validates that username and password are non-empty, then stores them
-/// in the application's in-memory auth store. Credentials are never
-/// persisted to disk.
+/// Spawns the SteamKit sidecar `login` command to perform actual Steam
+/// authentication (including phone approval / Steam Guard). On success,
+/// the sidecar persists a session token so subsequent commands skip auth.
 #[tauri::command]
-fn set_credentials(
+async fn set_credentials(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AuthStore>,
     username: String,
     password: String,
@@ -34,6 +35,12 @@ fn set_credentials(
         password,
         guard_code,
     };
+
+    // Actually authenticate with Steam via the sidecar
+    eprintln!("[set_credentials] authenticating with Steam...");
+    depot_downloader::login(&app, &credentials).await?;
+    eprintln!("[set_credentials] authentication successful");
+
     state
         .set(credentials.clone())
         .map_err(|e| RewindError::AuthFailed(e.to_string()))?;
@@ -111,7 +118,11 @@ async fn list_manifests(
     let credentials = state.get().ok_or_else(|| {
         RewindError::AuthRequired("Credentials not set. Please sign in first.".to_string())
     })?;
-    depot_downloader::list_manifests(&app, &app_id, &depot_id, &credentials).await
+    eprintln!("[list_manifests] spawning sidecar for app={} depot={}", app_id, depot_id);
+    let start = std::time::Instant::now();
+    let result = depot_downloader::list_manifests(&app, &app_id, &depot_id, &credentials).await;
+    eprintln!("[list_manifests] completed in {:?} with {} entries", start.elapsed(), result.as_ref().map_or(0, |v| v.len()));
+    result
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -17,7 +17,7 @@ public sealed class SteamSession : IDisposable
     private readonly SteamContent _content;
     private bool _isConnected;
     private bool _isLoggedIn;
-    private readonly TaskCompletionSource<bool> _connectTcs = new();
+    private TaskCompletionSource<bool> _connectTcs = new();
     private TaskCompletionSource<bool>? _loginTcs;
 
     public SteamClient Client => _client;
@@ -187,7 +187,22 @@ public sealed class SteamSession : IDisposable
             {
                 return cts;
             }
+
+            // Saved session failed — delete it and reconnect
             JsonOutput.Warn("Saved session expired, performing fresh login...");
+            try { File.Delete(sessionFile); } catch { }
+
+            // Wait for disconnect to fully process before reconnecting
+            _client.Disconnect();
+            await Task.Delay(1000);
+            _connectTcs = new TaskCompletionSource<bool>();
+            _client.Connect();
+            var reconnected = await _connectTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            if (!reconnected)
+            {
+                cts.Cancel();
+                throw new Exception("Failed to reconnect to Steam after session expiry");
+            }
         }
 
         // Fresh credential auth
@@ -246,6 +261,12 @@ public sealed class SteamSession : IDisposable
         {
             _isLoggedIn = true;
             _loginTcs?.TrySetResult(true);
+        }
+        else if (callback.Result == EResult.TryAnotherCM)
+        {
+            JsonOutput.Warn("Steam said TryAnotherCM, reconnecting...");
+            // Don't resolve loginTcs yet — reconnect and the caller will retry
+            _loginTcs?.TrySetResult(false);
         }
         else
         {
@@ -352,8 +373,8 @@ internal class JsonAuthenticator : IAuthenticator
     public Task<bool> AcceptDeviceConfirmationAsync()
     {
         JsonOutput.GuardPrompt("device_confirm", null);
-        // Wait for confirmation from stdin (any line = confirmed)
-        Console.ReadLine();
+        // Return true immediately — SteamKit2 polls the Steam backend for
+        // the phone approval; we don't need to block on stdin.
         return Task.FromResult(true);
     }
 }

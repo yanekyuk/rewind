@@ -49,8 +49,10 @@ pub struct ManifestEntry {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ManifestListEntry {
     /// The manifest identifier (large numeric ID as string for JSON safety).
+    #[serde(alias = "id")]
     pub manifest_id: String,
-    /// Date/time string from the sidecar output.
+    /// Date/time string from the sidecar output (branch name or timestamp).
+    #[serde(default)]
     pub date: String,
 }
 

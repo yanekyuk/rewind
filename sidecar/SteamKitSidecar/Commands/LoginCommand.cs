@@ -11,9 +11,11 @@ public static class LoginCommand
 
         try
         {
-            var success = await session.LoginAsync(username, password, guardCode);
-            JsonOutput.Done(success);
-            return success ? 0 : 1;
+            var cts = await session.ConnectAndLoginAsync(username, password, guardCode);
+            cts.Cancel(); // Stop callback processing
+            JsonOutput.AuthSuccess(username);
+            JsonOutput.Done(true);
+            return 0;
         }
         catch (Exception ex)
         {
