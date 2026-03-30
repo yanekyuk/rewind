@@ -1,4 +1,3 @@
-/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
@@ -8,12 +7,6 @@ const host = process.env.TAURI_DEV_HOST;
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   plugins: [react()],
-
-  test: {
-    environment: "jsdom",
-    setupFiles: ["./src/test-setup.ts"],
-    include: ["src/**/*.test.{ts,tsx}"],
-  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
