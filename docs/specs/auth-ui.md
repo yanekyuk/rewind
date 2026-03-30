@@ -2,9 +2,13 @@
 title: "Authentication UI and IPC"
 type: spec
 tags: [auth, credentials, ipc, frontend, ui, steamkit, steam-guard]
+status: superseded
+superseded-by: steam-ui-overhaul.md
 created: 2026-03-30
 updated: 2026-03-31
 ---
+
+> **Superseded (frontend section):** The frontend auth form described below (AuthInput component, Steam Guard code field) has been replaced by the LoginView component in the Steam UI Overhaul (`docs/specs/steam-ui-overhaul.md`). The backend IPC behavior and credential storage remain unchanged.
 
 # Authentication UI and IPC
 

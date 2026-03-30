@@ -2,9 +2,13 @@
 title: "Game Select UI"
 type: spec
 tags: [frontend, ui, game, selection, ipc, steps]
+status: superseded
+superseded-by: steam-ui-overhaul.md
 created: 2026-03-30
-updated: 2026-03-30
+updated: 2026-03-31
 ---
+
+> **Superseded:** The GameSelect component and step-based selection described below have been replaced by the GameLibrary component in the Steam UI Overhaul (`docs/specs/steam-ui-overhaul.md`).
 
 ## Behavior
 
