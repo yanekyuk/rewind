@@ -1,0 +1,16 @@
+{
+  "version": 2,
+  "dgSpecHash": "RcGp8oV1fI0=",
+  "success": true,
+  "projectFilePath": "/home/yanek/Projects/rewind/.worktrees/feat-steamkit-migration/sidecar/RewindSidecar/RewindSidecar.csproj",
+  "expectedPackageFiles": [
+    "/home/yanek/.nuget/packages/protobuf-net/3.2.56/protobuf-net.3.2.56.nupkg.sha512",
+    "/home/yanek/.nuget/packages/protobuf-net.core/3.2.56/protobuf-net.core.3.2.56.nupkg.sha512",
+    "/home/yanek/.nuget/packages/steamkit2/3.4.0/steamkit2.3.4.0.nupkg.sha512",
+    "/home/yanek/.nuget/packages/system.io.hashing/10.0.1/system.io.hashing.10.0.1.nupkg.sha512",
+    "/home/yanek/.nuget/packages/zstdsharp.port/0.8.7/zstdsharp.port.0.8.7.nupkg.sha512",
+    "/home/yanek/.nuget/packages/microsoft.aspnetcore.app.ref/9.0.14/microsoft.aspnetcore.app.ref.9.0.14.nupkg.sha512",
+    "/home/yanek/.nuget/packages/microsoft.netcore.app.host.linux-x64/9.0.14/microsoft.netcore.app.host.linux-x64.9.0.14.nupkg.sha512"
+  ],
+  "logs": []
+}

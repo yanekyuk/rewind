@@ -1,0 +1,83 @@
+{
+  "format": 1,
+  "restore": {
+    "/home/yanek/Projects/rewind/.worktrees/feat-steamkit-migration/sidecar/RewindSidecar/RewindSidecar.csproj": {}
+  },
+  "projects": {
+    "/home/yanek/Projects/rewind/.worktrees/feat-steamkit-migration/sidecar/RewindSidecar/RewindSidecar.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "/home/yanek/Projects/rewind/.worktrees/feat-steamkit-migration/sidecar/RewindSidecar/RewindSidecar.csproj",
+        "projectName": "RewindSidecar",
+        "projectPath": "/home/yanek/Projects/rewind/.worktrees/feat-steamkit-migration/sidecar/RewindSidecar/RewindSidecar.csproj",
+        "packagesPath": "/home/yanek/.nuget/packages/",
+        "outputPath": "/home/yanek/Projects/rewind/.worktrees/feat-steamkit-migration/sidecar/RewindSidecar/obj/",
+        "projectStyle": "PackageReference",
+        "configFilePaths": [
+          "/home/yanek/.nuget/NuGet/NuGet.Config"
+        ],
+        "originalTargetFrameworks": [
+          "net9.0"
+        ],
+        "sources": {
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net9.0": {
+            "targetAlias": "net9.0",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.100"
+      },
+      "frameworks": {
+        "net9.0": {
+          "targetAlias": "net9.0",
+          "dependencies": {
+            "SteamKit2": {
+              "target": "Package",
+              "version": "[3.4.0, )"
+            }
+          },
+          "imports": [
+            "net461",
+            "net462",
+            "net47",
+            "net471",
+            "net472",
+            "net48",
+            "net481"
+          ],
+          "assetTargetFallback": true,
+          "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.AspNetCore.App.Ref",
+              "version": "[9.0.14, 9.0.14]"
+            },
+            {
+              "name": "Microsoft.NETCore.App.Host.linux-x64",
+              "version": "[9.0.14, 9.0.14]"
+            }
+          ],
+          "frameworkReferences": {
+            "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            }
+          },
+          "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.104/PortableRuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}
