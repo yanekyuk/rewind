@@ -38,13 +38,77 @@ pub fn spawn_depot_downloader(
     cmd.spawn()
 }
 
+/// Build the full argument list for an authenticated DepotDownloader invocation.
+///
+/// Prepends authentication arguments (from [`Credentials::to_depot_args`]) to
+/// the caller-supplied operation-specific arguments.
+///
+/// # Example
+///
+/// ```ignore
+/// let args = build_authenticated_args(&credentials, &[
+///     "-app", "3321460",
+///     "-depot", "3321461",
+///     "-manifest", "12345",
+///     "-manifest-only",
+///     "-dir", "/tmp/output",
+/// ]);
+/// spawn_depot_downloader(&app, args)?;
+/// ```
+pub fn build_authenticated_args(
+    credentials: &crate::domain::auth::Credentials,
+    operation_args: &[&str],
+) -> Vec<String> {
+    let mut args = credentials.to_depot_args();
+    args.extend(operation_args.iter().map(|s| s.to_string()));
+    args
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::auth::Credentials;
 
     #[test]
     fn sidecar_name_matches_config() {
         // The sidecar name must match the externalBin entry in tauri.conf.json
         assert_eq!(SIDECAR_NAME, "binaries/DepotDownloader");
+    }
+
+    #[test]
+    fn build_authenticated_args_prepends_auth() {
+        let creds = Credentials {
+            username: "testuser".to_string(),
+            password: "testpass".to_string(),
+            guard_code: None,
+        };
+        let args = build_authenticated_args(&creds, &["-app", "3321460", "-manifest-only"]);
+        assert_eq!(
+            args,
+            vec![
+                "-username",
+                "testuser",
+                "-password",
+                "testpass",
+                "-remember-password",
+                "-app",
+                "3321460",
+                "-manifest-only",
+            ]
+        );
+    }
+
+    #[test]
+    fn build_authenticated_args_with_empty_operation_args() {
+        let creds = Credentials {
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            guard_code: None,
+        };
+        let args = build_authenticated_args(&creds, &[]);
+        assert_eq!(
+            args,
+            vec!["-username", "user", "-password", "pass", "-remember-password"]
+        );
     }
 }
