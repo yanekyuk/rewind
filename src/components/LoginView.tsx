@@ -1,20 +1,14 @@
-import { useState, useEffect, type FormEvent } from "react";
-import { useAuth } from "../hooks/useAuth";
+import { useState, type FormEvent } from "react";
+import type { UseAuthResult } from "../hooks/useAuth";
 
 interface LoginViewProps {
-  onAuthenticated: () => void;
+  auth: UseAuthResult;
 }
 
-export function LoginView({ onAuthenticated }: LoginViewProps) {
-  const { checking, authenticated, submitting, error, submit } = useAuth();
+export function LoginView({ auth }: LoginViewProps) {
+  const { checking, submitting, error, submit } = auth;
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-
-  useEffect(() => {
-    if (authenticated) {
-      onAuthenticated();
-    }
-  }, [authenticated, onAuthenticated]);
 
   if (checking) {
     return (

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "./hooks/useAuth";
 import { LoginView } from "./components/LoginView";
 import { GameLibrary } from "./components/GameLibrary";
@@ -9,17 +9,21 @@ import type { GameInfo } from "./types/game";
 import "./App.css";
 
 function App() {
-  const { authenticated, signOut } = useAuth();
-  const [currentView, setCurrentView] = useState<ViewId>(
-    authenticated ? "game-library" : "auth-gate",
-  );
+  const auth = useAuth();
+  const { authenticated, signOut } = auth;
+  const [currentView, setCurrentView] = useState<ViewId>("auth-gate");
   const [selectedGame, setSelectedGame] = useState<GameInfo | null>(null);
   const [selectedManifestId, setSelectedManifestId] = useState<string | null>(
     null,
   );
-  const handleAuthenticated = useCallback(() => {
-    setCurrentView("game-library");
-  }, []);
+
+  // Navigate to library when auth state changes to authenticated
+  useEffect(() => {
+    if (authenticated) {
+      setCurrentView("game-library");
+    }
+  }, [authenticated]);
+
 
   const handleSelectGame = useCallback((game: GameInfo) => {
     setSelectedGame(game);
@@ -51,7 +55,7 @@ function App() {
 
   // Auth gate
   if (!authenticated || currentView === "auth-gate") {
-    return <LoginView onAuthenticated={handleAuthenticated} />;
+    return <LoginView auth={auth} />;
   }
 
   // Game library

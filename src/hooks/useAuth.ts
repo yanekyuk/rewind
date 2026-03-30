@@ -3,7 +3,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 
 type InvokeFn = typeof tauriInvoke;
 
-interface UseAuthResult {
+export interface UseAuthResult {
   /** Whether we are checking existing auth state on mount. */
   checking: boolean;
   /** Whether credentials have been successfully stored. */
