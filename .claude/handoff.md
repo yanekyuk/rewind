@@ -1,49 +1,61 @@
 ---
-trigger: "Frontend scaffolding — strip the Tauri template UI and set up the real app shell with layout, step-based navigation for the downgrade workflow, and basic theme/styling. Pure React, no backend calls."
+trigger: "Steam path detection + game listing — detect Steam installation across platforms, parse appmanifest ACF files using the VDF parser, and expose a list_games Tauri IPC command that returns installed games to the frontend."
 type: feat
-branch: feat/app-shell
+branch: feat/game-listing
 base-branch: main
 created: 2026-03-30
-version-bump: patch
+version-bump: minor
 ---
 
 ## Related Files
-- src/App.tsx (template app component — replace entirely)
-- src/App.css (template styles — replace entirely)
-- src/main.tsx (React entry — keep, minor updates if needed)
-- src/assets/react.svg (template asset — remove)
-- public/tauri.svg (keep as app icon placeholder)
-- public/vite.svg (template asset — remove)
-- index.html (entry HTML — may need title/meta updates)
-- package.json (may need new dependencies)
+- src-tauri/src/infrastructure/mod.rs (infrastructure layer — Steam path detection and filesystem reads go here)
+- src-tauri/src/domain/mod.rs (domain layer — may need new types for game listing)
+- src-tauri/src/domain/vdf/acf.rs (AppState struct — already parses ACF into typed data)
+- src-tauri/src/domain/vdf/parser.rs (VDF parser — used to parse appmanifest files)
+- src-tauri/src/lib.rs (Tauri command registration — new IPC command goes here)
+- src-tauri/src/error.rs (RewindError — infrastructure errors for path detection failures)
+- src-tauri/Cargo.toml (may need dirs or home crate for cross-platform path resolution)
 
 ## Relevant Docs
-- docs/specs/mvp-scope.md (defines the core flow and steps the UI must represent)
-- docs/decisions/progress-ui.md (progress bar, cancel button, download speed — informs layout needs)
-- docs/decisions/manual-manifest-input.md (user workflow: paste manifest ID — informs input step)
-- docs/domain/downgrade-process.md (the 9-step workflow the UI navigates through)
+- docs/domain/steam-internals.md (ACF format, Steam paths per platform, libraryfolders.vdf)
+- docs/domain/platform-differences.md (platform-specific Steam paths and behaviors)
+- docs/domain/downgrade-process.md (Steps 1-2: detect Steam, identify installed games)
+- docs/decisions/layered-architecture.md (infrastructure implements domain interfaces, IPC boundary)
+- docs/specs/mvp-scope.md (core flow starts with detect Steam → list installed games)
 
 ## Related Issues
 None — no related issues found.
 
 ## Scope
-Replace the Tauri template frontend with the real Rewind app shell. This is a frontend-only task — no Tauri IPC calls, no backend integration.
+Implement Steam path detection and game listing as the first full-stack feature. This covers Steps 1 and 2 of the downgrade process.
 
-### What to build
-- **App layout**: Clean, dark-themed desktop app layout suitable for a gaming tool. Sidebar or header with app branding, main content area for the active step.
-- **Step navigation**: The downgrade workflow is a linear sequence of steps. Build a step indicator/stepper component showing progress through the flow:
-  1. Select Game
-  2. Enter Manifest ID
-  3. Comparing Versions
-  4. Downloading Files
-  5. Applying Downgrade
-  6. Complete
-- **Placeholder step views**: Each step gets a placeholder component with a title and description. No real functionality — just the structure for future wiring.
-- **Theme/styling**: Dark theme (gaming audience). Clean, minimal. Replace all template CSS. Use CSS modules or a single global stylesheet — no CSS framework required unless the orchestrator finds it beneficial.
-- **Cleanup**: Remove template assets (react.svg, vite.svg), template greet logic, and template CSS. Update index.html title to "Rewind".
+### Infrastructure layer (src-tauri/src/infrastructure/)
+- **Steam path detection module**: Find the default steamapps directory per platform:
+  - Linux: ~/.local/share/Steam/steamapps/
+  - macOS: ~/Library/Application Support/Steam/steamapps/
+  - Windows: C:\Program Files (x86)\Steam\steamapps\
+- **Library folders detection**: Parse steamapps/libraryfolders.vdf to discover additional Steam library locations (games installed on secondary drives)
+- **Appmanifest scanner**: Read all appmanifest_<appid>.acf files from each steamapps directory, parse them using the existing VDF parser + AppState struct
+- Error handling: Return meaningful errors when Steam is not installed or paths are inaccessible
+
+### Domain layer (src-tauri/src/domain/)
+- **GameInfo struct**: A serde-serializable struct representing a game for the frontend:
+  - appid, name, buildid, installdir
+  - depots (list of depot IDs with their current manifest IDs)
+  - install_path (full path to the game directory)
+- Conversion from AppState → GameInfo
+
+### Tauri IPC command
+- **list_games command**: Async Tauri command that:
+  1. Detects Steam installation paths
+  2. Scans for appmanifest files
+  3. Parses each into AppState → GameInfo
+  4. Returns Vec<GameInfo> to the frontend
+- Register in lib.rs invoke_handler
 
 ### Constraints
-- No Tauri IPC calls — this is purely frontend scaffolding
-- No routing library needed — step state can be managed with React useState for now
-- Keep components small and focused per implementation directives
-- Must look reasonable at the default 800x600 window size (from tauri.conf.json)
+- All paths must be cross-platform compatible
+- No hardcoded paths — detect or make configurable
+- Use async Rust (tokio) for filesystem reads
+- Gracefully handle missing Steam installation (return empty list or descriptive error, don't panic)
+- GameInfo must derive Serialize for Tauri IPC serialization
