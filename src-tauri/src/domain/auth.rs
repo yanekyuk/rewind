@@ -24,7 +24,9 @@ impl Credentials {
     ///
     /// Always includes `-username`, `-password`, and `-remember-password`.
     /// If a Steam Guard code is set, it is **not** included here — it is
-    /// provided interactively via stdin when DepotDownloader prompts for it.
+    /// written to DepotDownloader's stdin when the process prompts for it.
+    /// See [`infrastructure::sidecar::write_guard_code`] and
+    /// [`infrastructure::sidecar::is_guard_prompt`].
     pub fn to_depot_args(&self) -> Vec<String> {
         vec![
             "-username".to_string(),

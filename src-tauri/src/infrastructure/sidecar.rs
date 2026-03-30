@@ -38,6 +38,32 @@ pub fn spawn_depot_downloader(
     cmd.spawn()
 }
 
+/// Stdout patterns that indicate DepotDownloader is prompting for a Steam Guard code.
+const GUARD_PROMPT_PATTERNS: &[&str] = &[
+    "Please enter the 2 factor auth code",
+    "Please enter your Steam Guard Mobile Authenticator code",
+    "Two-factor code:",
+    "Enter the current code from your Steam Guard",
+];
+
+/// Check whether a stdout line from DepotDownloader is a Steam Guard 2FA prompt.
+pub fn is_guard_prompt(line: &str) -> bool {
+    GUARD_PROMPT_PATTERNS
+        .iter()
+        .any(|pattern| line.contains(pattern))
+}
+
+/// Write a Steam Guard code to DepotDownloader's stdin.
+///
+/// Appends a newline so DepotDownloader reads the code as a complete line.
+pub fn write_guard_code(
+    child: &mut CommandChild,
+    code: &str,
+) -> Result<(), tauri_plugin_shell::Error> {
+    let input = format!("{}\n", code);
+    child.write(input.as_bytes())
+}
+
 /// Build the full argument list for an authenticated DepotDownloader invocation.
 ///
 /// Prepends authentication arguments (from [`Credentials::to_depot_args`]) to
@@ -96,6 +122,32 @@ mod tests {
                 "-manifest-only",
             ]
         );
+    }
+
+    #[test]
+    fn is_guard_prompt_detects_email_2fa() {
+        assert!(is_guard_prompt(
+            "Please enter the 2 factor auth code sent to your email at t***@example.com:"
+        ));
+    }
+
+    #[test]
+    fn is_guard_prompt_detects_mobile_authenticator() {
+        assert!(is_guard_prompt(
+            "Please enter your Steam Guard Mobile Authenticator code:"
+        ));
+    }
+
+    #[test]
+    fn is_guard_prompt_detects_two_factor_code() {
+        assert!(is_guard_prompt("Two-factor code:"));
+    }
+
+    #[test]
+    fn is_guard_prompt_rejects_unrelated_output() {
+        assert!(!is_guard_prompt("Downloading depot 3321461..."));
+        assert!(!is_guard_prompt("Connected to Steam"));
+        assert!(!is_guard_prompt(""));
     }
 
     #[test]
