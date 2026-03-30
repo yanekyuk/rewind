@@ -3,6 +3,8 @@ pub mod domain;
 pub mod error;
 pub mod infrastructure;
 
+use application::auth::AuthStore;
+use domain::auth::Credentials;
 use domain::game::GameInfo;
 use domain::manifest::ManifestListEntry;
 use error::RewindError;
@@ -13,6 +15,36 @@ use infrastructure::steam;
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+/// Store Steam credentials in memory for the current session.
+///
+/// Validates that username and password are non-empty, then stores them
+/// in the application's in-memory auth store. Credentials are never
+/// persisted to disk.
+#[tauri::command]
+fn set_credentials(
+    state: tauri::State<'_, AuthStore>,
+    username: String,
+    password: String,
+    guard_code: Option<String>,
+) -> Result<(), RewindError> {
+    let credentials = Credentials {
+        username,
+        password,
+        guard_code,
+    };
+    state
+        .set(credentials)
+        .map_err(|e| RewindError::AuthFailed(e.to_string()))
+}
+
+/// Check whether credentials have been stored in the current session.
+///
+/// Returns `true` if credentials are available for DepotDownloader operations.
+#[tauri::command]
+fn get_auth_state(state: tauri::State<'_, AuthStore>) -> bool {
+    state.is_set()
 }
 
 /// List all installed Steam games across all detected Steam library folders.
@@ -75,7 +107,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![greet, list_games, list_manifests])
+        .manage(AuthStore::default())
+        .invoke_handler(tauri::generate_handler![
+            greet,
+            list_games,
+            list_manifests,
+            set_credentials,
+            get_auth_state
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
