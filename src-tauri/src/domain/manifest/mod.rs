@@ -1,5 +1,7 @@
+mod list_parser;
 mod parser;
 
+pub use list_parser::parse_manifest_list;
 pub use parser::parse_manifest;
 
 /// Metadata and file entries from a DepotDownloader `-manifest-only` output.
@@ -36,6 +38,18 @@ pub struct ManifestEntry {
     pub flags: u32,
     /// Relative file path.
     pub name: String,
+}
+
+/// A single entry from a manifest listing (available versions for a depot).
+///
+/// Returned by DepotDownloader when listing manifests without specifying a
+/// particular manifest ID.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct ManifestListEntry {
+    /// The manifest identifier (large numeric ID as string for JSON safety).
+    pub manifest_id: String,
+    /// Date/time string from the DepotDownloader output.
+    pub date: String,
 }
 
 /// Errors that can occur when parsing a depot manifest.
