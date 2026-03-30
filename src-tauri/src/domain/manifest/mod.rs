@@ -1,6 +1,8 @@
+mod diff;
 mod list_parser;
 mod parser;
 
+pub use diff::{diff_manifests, ManifestDiff};
 pub use list_parser::parse_manifest_list;
 pub use parser::parse_manifest;
 
