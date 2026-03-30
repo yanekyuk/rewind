@@ -7,6 +7,12 @@ use domain::game::GameInfo;
 use error::RewindError;
 use infrastructure::steam;
 
+// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+#[tauri::command]
+fn greet(name: &str) -> String {
+    format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
 /// List all installed Steam games across all detected Steam library folders.
 ///
 /// This Tauri IPC command:
@@ -48,7 +54,7 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![list_games])
+        .invoke_handler(tauri::generate_handler![greet, list_games])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
