@@ -7,14 +7,15 @@
 use tauri::AppHandle;
 use tauri_plugin_shell::process::CommandEvent;
 
+use crate::domain::auth::Credentials;
 use crate::domain::manifest::{parse_manifest_list, ManifestListEntry};
 use crate::error::RewindError;
 
-use super::sidecar::spawn_depot_downloader;
+use super::sidecar::{build_authenticated_args, spawn_depot_downloader};
 
 /// List available manifests for a depot using DepotDownloader.
 ///
-/// Spawns DepotDownloader with the given credentials to fetch the manifest
+/// Spawns DepotDownloader with stored credentials to fetch the manifest
 /// history for the specified app and depot. Collects stdout and parses
 /// manifest entries from the output.
 ///
@@ -23,8 +24,7 @@ use super::sidecar::spawn_depot_downloader;
 /// * `app` - Tauri application handle (needed to resolve the sidecar binary)
 /// * `app_id` - Steam application ID
 /// * `depot_id` - Steam depot ID
-/// * `username` - Steam username for authentication
-/// * `password` - Steam password for authentication
+/// * `credentials` - Steam credentials from the AuthStore
 ///
 /// # Errors
 ///
@@ -34,20 +34,12 @@ pub async fn list_manifests(
     app: &AppHandle,
     app_id: &str,
     depot_id: &str,
-    username: &str,
-    password: &str,
+    credentials: &Credentials,
 ) -> Result<Vec<ManifestListEntry>, RewindError> {
-    let args = vec![
-        "-app".to_string(),
-        app_id.to_string(),
-        "-depot".to_string(),
-        depot_id.to_string(),
-        "-username".to_string(),
-        username.to_string(),
-        "-password".to_string(),
-        password.to_string(),
-        "-remember-password".to_string(),
-    ];
+    let args = build_authenticated_args(credentials, &[
+        "-app", app_id,
+        "-depot", depot_id,
+    ]);
 
     let (mut rx, _child) =
         spawn_depot_downloader(app, args).map_err(|e| {

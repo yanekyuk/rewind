@@ -1,11 +1,39 @@
-//! In-memory credential store for the application session.
-//!
-//! Wraps [`Credentials`] in a thread-safe container managed by Tauri state.
-//! Credentials exist only in memory — they are never persisted to disk.
+//! In-memory credential store for the application session, with optional
+//! OS keychain persistence via the `keyring` crate.
 
 use std::sync::Mutex;
 
 use crate::domain::auth::Credentials;
+
+const KEYCHAIN_SERVICE: &str = "rewind";
+const KEYCHAIN_ACCOUNT: &str = "steam-credentials";
+
+/// Persist credentials to the OS keychain (macOS Keychain, Windows Credential
+/// Manager, Linux libsecret). Stores a JSON payload so a single entry holds
+/// both username and password.
+///
+/// Silently ignores errors so keychain unavailability never blocks the app.
+pub fn save_to_keychain(credentials: &Credentials) {
+    if let Ok(payload) = serde_json::to_string(credentials) {
+        if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+            let _ = entry.set_password(&payload);
+        }
+    }
+}
+
+/// Load credentials from the OS keychain, if any were previously saved.
+pub fn load_from_keychain() -> Option<Credentials> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).ok()?;
+    let payload = entry.get_password().ok()?;
+    serde_json::from_str(&payload).ok()
+}
+
+/// Remove saved credentials from the OS keychain.
+pub fn clear_from_keychain() {
+    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+        let _ = entry.delete_credential();
+    }
+}
 
 /// Thread-safe, in-memory credential store.
 ///

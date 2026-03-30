@@ -9,7 +9,10 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 
 /// The sidecar binary name as configured in `tauri.conf.json` `bundle.externalBin`.
-const SIDECAR_NAME: &str = "binaries/DepotDownloader";
+///
+/// The target triple suffix is appended at compile time because `tauri_plugin_shell`'s
+/// `sidecar()` does not append it automatically in the Rust API (unlike the JS API).
+const SIDECAR_NAME: &str = concat!("binaries/DepotDownloader-", env!("TARGET_TRIPLE"));
 
 /// Spawns the DepotDownloader sidecar with the given arguments.
 ///
@@ -97,8 +100,10 @@ mod tests {
 
     #[test]
     fn sidecar_name_matches_config() {
-        // The sidecar name must match the externalBin entry in tauri.conf.json
-        assert_eq!(SIDECAR_NAME, "binaries/DepotDownloader");
+        // The name includes the target triple because tauri_plugin_shell's Rust API
+        // does not append it automatically (unlike the JS API).
+        assert!(SIDECAR_NAME.starts_with("binaries/DepotDownloader-"));
+        assert!(SIDECAR_NAME.contains(env!("TARGET_TRIPLE")));
     }
 
     #[test]

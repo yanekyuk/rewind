@@ -16,6 +16,8 @@ interface UseAuthResult {
     password: string,
     guardCode?: string,
   ) => Promise<void>;
+  /** Clear credentials from memory and the OS keychain. */
+  signOut: () => Promise<void>;
 }
 
 export function useAuth(): UseAuthResult {
@@ -69,5 +71,10 @@ export function useAuth(): UseAuthResult {
     [],
   );
 
-  return { checking, authenticated, submitting, error, submit };
+  const signOut = useCallback(async () => {
+    await invoke("clear_credentials");
+    setAuthenticated(false);
+  }, []);
+
+  return { checking, authenticated, submitting, error, submit, signOut };
 }
