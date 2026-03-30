@@ -1,14 +1,19 @@
 import { useState } from "react";
 import { StepIndicator } from "./components/StepIndicator";
 import { StepView } from "./components/StepView";
+import { GameSelect } from "./components/GameSelect";
 import { STEPS } from "./steps";
+import type { GameInfo } from "./types/game";
 import "./App.css";
 
 function App() {
   const [currentStep, setCurrentStep] = useState(0);
+  const [selectedGame, setSelectedGame] = useState<GameInfo | null>(null);
 
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === STEPS.length - 1;
+  const isGameSelectStep = STEPS[currentStep].id === "select-game";
+  const isNextDisabled = isLastStep || (isGameSelectStep && selectedGame === null);
 
   return (
     <div className="app">
@@ -23,7 +28,14 @@ function App() {
         </aside>
 
         <main className="app-content">
-          <StepView stepIndex={currentStep} />
+          {isGameSelectStep ? (
+            <GameSelect
+              selectedGame={selectedGame}
+              onSelectGame={setSelectedGame}
+            />
+          ) : (
+            <StepView stepIndex={currentStep} />
+          )}
 
           <div className="app-nav">
             <button
@@ -36,7 +48,7 @@ function App() {
             <button
               className="app-nav__button app-nav__button--primary"
               onClick={() => setCurrentStep((s) => s + 1)}
-              disabled={isLastStep}
+              disabled={isNextDisabled}
             >
               Next
             </button>
