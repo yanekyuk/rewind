@@ -1,45 +1,37 @@
 ---
-trigger: "Save brainstorming results as foundation documentation — domain knowledge, specs, and design decisions for the Rewind Steam game downgrader"
-type: docs
-branch: docs/foundation-docs
+trigger: "VDF/ACF parser — implement a dedicated parser for Valve Data Format (VDF) files used by Steam, including ACF app manifest files. This is the domain layer foundation that everything else depends on."
+type: feat
+branch: feat/vdf-parser
 base-branch: main
 created: 2026-03-30
+version-bump: minor
 ---
 
 ## Related Files
-- INIT.md (original project spec / manual process documentation)
-- docs/swe-config.json (project configuration)
-- src-tauri/Cargo.toml (backend manifest)
-- package.json (frontend manifest)
-- src-tauri/src/lib.rs (backend entry)
-- src/App.tsx (frontend entry)
+- src-tauri/src/lib.rs (backend entry point — Tauri commands will eventually call the parser)
+- src-tauri/Cargo.toml (dependencies — may need nom or similar parsing crate)
 
 ## Relevant Docs
-None — knowledge base does not cover this area yet. This is the initial documentation effort.
+- docs/domain/steam-internals.md (VDF/ACF format specification, field descriptions, example data)
+- docs/domain/downgrade-process.md (how parsed ACF data feeds into the downgrade workflow)
+- docs/decisions/layered-architecture.md (parser belongs in domain layer — no I/O, no infrastructure imports)
 
 ## Related Issues
-None — no remote configured yet.
+None — no related issues found.
 
 ## Scope
-Write the foundational project documentation based on the brainstorming session. This includes:
+Implement a VDF/ACF parser in Rust as part of the domain layer. This is the foundational module that all subsequent features depend on.
 
-### Domain Knowledge (docs/domain/)
-- **Steam internals**: depots, manifests, ACF/VDF format, buildids, how Steam detects updates
-- **Downgrade process**: the 9-step manual workflow and why each step is necessary
-- **DepotDownloader**: capabilities, limitations, CLI interface, GPL-2.0 license implications
-- **Platform differences**: Linux (chattr +i), macOS (chflags uchg), Windows (read-only attribute)
+### What to build
+- A VDF text parser that handles Valve Data Format: nested key-value pairs using braces and quotes
+- Support for parsing ACF app manifest files (appmanifest_<appid>.acf) into strongly-typed Rust structs
+- Typed structs for AppState including: appid, name, buildid, installdir, StateFlags, InstalledDepots (map of depot ID to manifest + size), TargetBuildID, BytesToDownload
+- A serializer/writer that can output modified VDF back to text (needed later for ACF patching in Step 8)
+- Unit tests with real-world ACF examples
 
-### Specifications (docs/specs/)
-- **MVP scope**: game-agnostic downgrader, v0.1 feature set
-- **Core flow**: detect Steam → list games → user picks game → user provides manifest ID → diff → download → apply → patch ACF → lock manifest → remind user
-- **Auth flow**: in-app credential input passed to DepotDownloader
-- **Version discovery**: auto-detect current installed version + manual manifest ID input for target
-
-### Design Decisions (docs/decisions/)
-- **GPL-2.0 licensing**: chosen to allow bundling DepotDownloader directly
-- **DepotDownloader as Tauri sidecar**: bundled self-contained binary (~33MB per platform), no .NET dependency
-- **Manual manifest ID input**: Steam has no API for historical manifests; SteamDB is the user's source
-- **Privilege escalation via pkexec/polkit**: only for manifest locking step, not entire app
-- **No backup in MVP**: Steam's "Verify integrity" serves as restore path
-- **Embedded progress UI + background notifications**: for long-running downloads (tens of GBs)
-- **Layered architecture**: domain/application/infrastructure separation with Tauri IPC boundary
+### Constraints
+- Domain layer only — no filesystem I/O, no Tauri imports, no infrastructure dependencies
+- Must handle VDF quirks: no commas, no colons, quoted and potentially unquoted keys, arbitrary nesting depth
+- Do not use regex for structured parsing — use a proper parser (nom, pest, or hand-rolled recursive descent)
+- Must be cross-platform (no OS-specific code)
+- Round-trip fidelity: parse then serialize should preserve the original structure (whitespace normalization is acceptable)
