@@ -435,6 +435,25 @@
   margin-top: 16px;
 }
 
+.auth-input__sign-out {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  margin-top: 8px;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: all 0.15s;
+}
+
+.auth-input__sign-out:hover {
+  color: #ef4444;
+  text-decoration-color: currentColor;
+}
+
 /* Manifest select */
 .manifest-select {
   flex: 1;

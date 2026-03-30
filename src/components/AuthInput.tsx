@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useAuth } from "../hooks/useAuth";
 
 export function AuthInput() {
-  const { checking, authenticated, submitting, error, submit } = useAuth();
+  const { checking, authenticated, submitting, error, submit, signOut } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [guardCode, setGuardCode] = useState("");
@@ -24,6 +24,9 @@ export function AuthInput() {
         <p className="auth-input__authenticated">
           Authenticated. You can proceed to the next step.
         </p>
+        <button className="auth-input__sign-out" onClick={signOut}>
+          Sign out
+        </button>
       </section>
     );
   }

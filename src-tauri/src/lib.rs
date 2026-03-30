@@ -3,7 +3,7 @@ pub mod domain;
 pub mod error;
 pub mod infrastructure;
 
-use application::auth::AuthStore;
+use application::auth::{clear_from_keychain, load_from_keychain, save_to_keychain, AuthStore};
 use domain::auth::Credentials;
 use domain::game::GameInfo;
 use domain::manifest::ManifestListEntry;
@@ -35,8 +35,10 @@ fn set_credentials(
         guard_code,
     };
     state
-        .set(credentials)
-        .map_err(|e| RewindError::AuthFailed(e.to_string()))
+        .set(credentials.clone())
+        .map_err(|e| RewindError::AuthFailed(e.to_string()))?;
+    save_to_keychain(&credentials);
+    Ok(())
 }
 
 /// Check whether credentials have been stored in the current session.
@@ -45,6 +47,13 @@ fn set_credentials(
 #[tauri::command]
 fn get_auth_state(state: tauri::State<'_, AuthStore>) -> bool {
     state.is_set()
+}
+
+/// Remove credentials from memory and from the OS keychain.
+#[tauri::command]
+fn clear_credentials(state: tauri::State<'_, AuthStore>) {
+    state.clear();
+    clear_from_keychain();
 }
 
 /// List all installed Steam games across all detected Steam library folders.
@@ -107,16 +116,23 @@ async fn list_manifests(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Pre-populate AuthStore from the OS keychain if credentials were saved previously.
+    let auth_store = AuthStore::default();
+    if let Some(saved) = load_from_keychain() {
+        let _ = auth_store.set(saved);
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(AuthStore::default())
+        .manage(auth_store)
         .invoke_handler(tauri::generate_handler![
             greet,
             list_games,
             list_manifests,
             set_credentials,
-            get_auth_state
+            get_auth_state,
+            clear_credentials,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
