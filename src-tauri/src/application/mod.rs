@@ -11,8 +11,14 @@
 //! infrastructure layer implements. Dependencies are injected at the composition
 //! root (Tauri command handlers).
 //!
+//! # Submodules
+//!
+//! - [`auth`] — In-memory credential store for session-scoped authentication
+//!
 //! # Planned Submodules
 //!
 //! - Downgrade workflow (state machine for the 9-step process)
 //! - Progress tracking and event emission
 //! - Error aggregation and user-facing error construction
+
+pub mod auth;

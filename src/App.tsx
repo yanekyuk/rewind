@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { StepIndicator } from "./components/StepIndicator";
 import { StepView } from "./components/StepView";
+import { AuthInput } from "./components/AuthInput";
 import { GameSelect } from "./components/GameSelect";
 import { ManifestSelect } from "./components/ManifestSelect";
 import { STEPS } from "./steps";
@@ -18,6 +19,7 @@ function App() {
   const isLastStep = currentStep === STEPS.length - 1;
   const currentStepId = STEPS[currentStep].id;
   const isGameSelectStep = currentStepId === "select-game";
+  const isAuthStep = currentStepId === "authenticate";
   const isVersionSelectStep = currentStepId === "select-version";
   const isNextDisabled =
     isLastStep ||
@@ -32,6 +34,10 @@ function App() {
           onSelectGame={setSelectedGame}
         />
       );
+    }
+
+    if (isAuthStep) {
+      return <AuthInput />;
     }
 
     if (isVersionSelectStep && selectedGame) {

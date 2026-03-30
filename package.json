@@ -1,7 +1,7 @@
 {
   "name": "rewind",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.8.0",
   "type": "module",
   "scripts": {
     "ensure-sidecar": "bash -c 'TARGET=$(rustc -vV | grep host | cut -d\" \" -f2) && EXT=\"\" && case \"$TARGET\" in *windows*) EXT=\".exe\" ;; esac && [ -f \"src-tauri/binaries/DepotDownloader-${TARGET}${EXT}\" ] && echo \"Sidecar binary exists for ${TARGET}\" || bash scripts/download-sidecar.sh'",

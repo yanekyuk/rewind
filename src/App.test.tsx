@@ -81,8 +81,12 @@ describe("App", () => {
     expect(nextButton).not.toBeDisabled();
   });
 
-  it("navigates to the next step after selecting a game and clicking Next", async () => {
-    mockInvoke.mockResolvedValue(mockGames);
+  it("navigates to the auth step after selecting a game and clicking Next", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_games") return Promise.resolve(mockGames);
+      if (cmd === "get_auth_state") return Promise.resolve(false);
+      return Promise.resolve(null);
+    });
     render(<App />);
     await waitFor(() => {
       expect(screen.getByText("Crimson Desert")).toBeInTheDocument();
@@ -92,13 +96,19 @@ describe("App", () => {
     const nextButton = screen.getByRole("button", { name: /next/i });
     fireEvent.click(nextButton);
 
-    expect(
-      screen.getByRole("heading", { name: STEPS[1].label }),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /steam authentication/i }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("navigates back to GameSelect from step 1", async () => {
-    mockInvoke.mockResolvedValue(mockGames);
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_games") return Promise.resolve(mockGames);
+      if (cmd === "get_auth_state") return Promise.resolve(false);
+      return Promise.resolve(null);
+    });
     render(<App />);
     await waitFor(() => {
       expect(screen.getByText("Crimson Desert")).toBeInTheDocument();
@@ -123,20 +133,33 @@ describe("App", () => {
     expect(backButton).toBeDisabled();
   });
 
-  it("shows StepView placeholder for non-game-select steps", async () => {
-    mockInvoke.mockResolvedValue(mockGames);
+  it("shows select-version step after auth step", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "list_games") return Promise.resolve(mockGames);
+      if (cmd === "get_auth_state") return Promise.resolve(true);
+      if (cmd === "list_manifests") return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
     render(<App />);
     await waitFor(() => {
       expect(screen.getByText("Crimson Desert")).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByText("Crimson Desert"));
+    // Navigate past auth (step 1) to select-version (step 2)
+    fireEvent.click(screen.getByRole("button", { name: /next/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: /steam authentication/i }),
+      ).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("button", { name: /next/i }));
 
-    // Step 1 should show the StepView placeholder
-    expect(
-      screen.getByRole("heading", { name: STEPS[1].label }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(STEPS[1].description)).toBeInTheDocument();
+    // Step 2 (select-version) should show the ManifestSelect component
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: STEPS[2].label }),
+      ).toBeInTheDocument();
+    });
   });
 });

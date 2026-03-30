@@ -26,4 +26,12 @@ pub enum RewindError {
     /// An infrastructure-layer error (e.g., filesystem I/O, subprocess failure).
     #[error("Infrastructure error: {0}")]
     Infrastructure(String),
+
+    /// Authentication is required but credentials have not been provided.
+    #[error("Authentication required: {0}")]
+    AuthRequired(String),
+
+    /// Authentication failed (invalid credentials, expired 2FA, etc.).
+    #[error("Authentication failed: {0}")]
+    AuthFailed(String),
 }
