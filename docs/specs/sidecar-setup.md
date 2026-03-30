@@ -37,3 +37,4 @@ Configure Tauri to bundle DepotDownloader as a sidecar binary so the app can res
 - [ ] A unit test verifies the sidecar command can be constructed.
 - [ ] DepotDownloader's GPL-2.0 license is included as a Tauri resource.
 - [ ] `Cargo.toml` includes `tauri-plugin-shell` dependency.
+- [ ] `bun run dev` and `bun run build` automatically download the sidecar binary if missing (via `ensure-sidecar` script).
