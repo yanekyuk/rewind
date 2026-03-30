@@ -23,5 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 
+# Sidecar binaries (downloaded per-platform, ~33MB each)
+src-tauri/binaries/
+
 # Claude Code — commit shared settings, ignore local overrides
 .claude/settings.local.json
