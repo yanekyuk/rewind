@@ -262,11 +262,7 @@ pub async fn get_manifest(
                             payload.code
                         )
                     } else {
-                        format!(
-                            "SteamKit sidecar exited with code {:?}: {}",
-                            payload.code,
-                            stderr_buffer.trim()
-                        )
+                        extract_sidecar_error(&stderr_buffer)
                     };
                     return Err(RewindError::Infrastructure(detail));
                 }
@@ -393,10 +389,7 @@ pub async fn download(
                             payload.code
                         )
                     } else {
-                        format!(
-                            "SteamKit sidecar download failed: {}",
-                            stderr_buffer.trim()
-                        )
+                        extract_sidecar_error(&stderr_buffer)
                     };
                     return Err(RewindError::Infrastructure(detail));
                 }
