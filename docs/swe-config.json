@@ -1,0 +1,65 @@
+{
+  "stack": {
+    "language": "TypeScript + Rust",
+    "runtime": "Bun (frontend), Cargo (backend)",
+    "packageManager": "bun",
+    "test": "",
+    "lint": "",
+    "format": "",
+    "typecheck": "tsc"
+  },
+  "sourceRoot": "src",
+  "integrations": {
+    "githubIssues": true,
+    "coderabbit": false,
+    "linear": false,
+    "context7": true,
+    "autoDocs": true
+  },
+  "architecture": {
+    "rules": [
+      "Domain layer (Steam types, VDF parsing, manifest diffing) must not import from infrastructure or application layers",
+      "Application layer (downgrade orchestration, workflow coordination) must not import from infrastructure layer directly",
+      "Infrastructure layer (filesystem I/O, DepotDownloader subprocess, Steam path detection, manifest locking) implements interfaces defined in the domain layer",
+      "Frontend (React) communicates with the Rust backend only through Tauri IPC commands — no direct filesystem access",
+      "Shared types between frontend and backend are defined in the Rust domain layer and mirrored via Tauri's type generation"
+    ]
+  },
+  "versioning": [
+    "Bump package.json and src-tauri/Cargo.toml versions together for all changes"
+  ],
+  "directives": {
+    "implementation": [
+      "Use strongly-typed Tauri IPC commands with serde for serialization",
+      "Prefer async Rust (tokio) for I/O-bound operations like subprocess calls and file operations",
+      "Use Result<T, E> with custom error types in Rust — propagate errors to the frontend as typed responses",
+      "Keep React components small and focused; lift state to hooks or context when shared",
+      "Parse VDF/ACF files with a dedicated parser module — do not use regex for structured data",
+      "Subprocess calls to DepotDownloader must be cancellable and report progress back to the frontend"
+    ],
+    "review": [
+      "Verify all filesystem paths are cross-platform compatible (Linux, macOS, Windows)",
+      "Check that Tauri commands handle errors gracefully and return user-friendly messages",
+      "Ensure no hardcoded paths — all Steam/game paths must be detected or configurable",
+      "Verify subprocess spawning has proper timeout and cancellation handling",
+      "Check that sensitive data (Steam credentials) is never logged or persisted insecurely"
+    ],
+    "documentation": [
+      "Document Steam-specific concepts (depots, manifests, ACF format) for contributors unfamiliar with Steam internals",
+      "Keep specs focused on the what and why — implementation details belong in code comments",
+      "Use diagrams for multi-step workflows like the downgrade process"
+    ],
+    "delivery": [
+      "Use conventional commit messages (feat:, fix:, chore:, docs:, refactor:)",
+      "Use conventional branch names (feat/, fix/, chore/, docs/, refactor/)",
+      "Use normal merges (no squash) to preserve commit history",
+      "PR titles should follow conventional commit format"
+    ],
+    "triage": [
+      "Classify by affected layer: frontend, backend, or full-stack",
+      "Branch names: <type>/<short-description> (e.g., feat/manifest-parser, fix/steam-path-detection)",
+      "Scope features to a single step of the downgrade process when possible",
+      "Tag issues affecting cross-platform behavior with the relevant OS"
+    ]
+  }
+}
