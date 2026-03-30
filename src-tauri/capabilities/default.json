@@ -10,7 +10,7 @@
       "identifier": "shell:allow-execute",
       "allow": [
         {
-          "name": "binaries/DepotDownloader",
+          "name": "binaries/SteamKitSidecar",
           "sidecar": true,
           "args": true
         }
