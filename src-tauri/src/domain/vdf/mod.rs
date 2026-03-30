@@ -6,11 +6,8 @@ pub use parser::parse;
 pub use serializer::serialize;
 pub use acf::{AppState, InstalledDepot};
 
-
-
 /// A VDF value is either a string or a nested map of key-value pairs.
-/// BTreeMap is used to preserve insertion order for round-trip fidelity,
-/// though VDF does not guarantee ordering. We use a Vec of pairs instead
+/// Uses a Vec of pairs instead of a map to preserve insertion order
 /// to support duplicate keys and preserve ordering.
 #[derive(Debug, Clone, PartialEq)]
 pub enum VdfValue {
