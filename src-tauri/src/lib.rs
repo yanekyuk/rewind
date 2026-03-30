@@ -56,6 +56,12 @@ fn get_auth_state(state: tauri::State<'_, AuthStore>) -> bool {
     state.is_set()
 }
 
+/// Return the username of the currently authenticated user, if any.
+#[tauri::command]
+fn get_username(state: tauri::State<'_, AuthStore>) -> Option<String> {
+    state.get().map(|c| c.username)
+}
+
 /// Remove credentials from memory and from the OS keychain.
 #[tauri::command]
 fn clear_credentials(state: tauri::State<'_, AuthStore>) {
@@ -143,6 +149,7 @@ pub fn run() {
             list_manifests,
             set_credentials,
             get_auth_state,
+            get_username,
             clear_credentials,
         ])
         .run(tauri::generate_context!())

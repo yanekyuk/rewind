@@ -6,14 +6,12 @@ interface VersionSelectProps {
   game: GameInfo;
   selectedManifestId: string | null;
   onSelectManifest: (manifestId: string) => void;
-  onBack: () => void;
 }
 
 export function VersionSelect({
   game,
   selectedManifestId,
   onSelectManifest,
-  onBack,
 }: VersionSelectProps) {
   const { manifests, loading, error, fetch } = useManifestList();
 
@@ -35,16 +33,6 @@ export function VersionSelect({
 
   return (
     <div className="version-select">
-      <div className="version-select__nav">
-        <button
-          className="version-select__back"
-          onClick={onBack}
-          type="button"
-        >
-          Back to {game.name}
-        </button>
-      </div>
-
       <h1 className="version-select__title">Change Version</h1>
       <p className="version-select__subtitle">{game.name}</p>
 

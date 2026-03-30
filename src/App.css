@@ -41,41 +41,61 @@
    ========================================================================== */
 
 .login-view {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  background: linear-gradient(135deg, var(--color-gradient-start), var(--color-gradient-end));
+  background-color: #1b2838;
+  -webkit-app-region: drag;
+}
+
+.login-view__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+  z-index: 1;
+  -webkit-app-region: no-drag;
+}
+
+.login-view__close:hover {
+  color: var(--color-text-bright);
 }
 
 .login-view__card {
-  background-color: var(--color-surface);
-  border-radius: 4px;
-  padding: 40px;
+  padding: 48px;
   width: 100%;
-  max-width: 400px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+  max-width: 520px;
+  -webkit-app-region: no-drag;
 }
 
 .login-view__brand {
-  font-size: 28px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 32px;
   font-weight: 700;
   color: var(--color-text-bright);
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  margin-bottom: 4px;
-}
-
-.login-view__subtitle {
-  font-size: 13px;
-  color: var(--color-text-muted);
   margin-bottom: 32px;
 }
 
 .login-view__form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
+  max-width: 520px;
+  min-height: 220px;
 }
 
 .login-view__field {
@@ -86,27 +106,26 @@
 
 .login-view__label {
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 600;
   color: var(--color-accent);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
 
 .login-view__input {
-  padding: 10px 12px;
-  border-radius: 3px;
-  border: 1px solid var(--color-border);
-  background-color: rgba(0, 0, 0, 0.3);
+  padding: 12px 14px;
+  border-radius: 2px;
+  border: none;
+  background-color: #32394a;
   color: var(--color-text-bright);
-  font-size: 14px;
+  font-size: 15px;
   font-family: inherit;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: background-color 0.15s;
 }
 
 .login-view__input:focus {
   outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 2px var(--color-accent-dim);
+  background-color: #3d4450;
 }
 
 .login-view__input::placeholder {
@@ -124,23 +143,24 @@
 }
 
 .login-view__submit {
-  padding: 10px 24px;
+  padding: 14px 24px;
   border-radius: 3px;
   border: none;
-  background: linear-gradient(to right, #47bfff 5%, #1a44c2 60%);
-  color: var(--color-text-bright);
-  font-size: 14px;
+  background: linear-gradient(to right, #47bfff 0%, #1a44c2 100%);
+  color: white;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   font-family: inherit;
   transition: all 0.2s;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 8px;
+  margin-top: 16px;
+  max-width: 360px;
+  align-self: center;
+  width: 100%;
 }
 
 .login-view__submit:hover:not(:disabled) {
-  background: linear-gradient(to right, #66d0ff 5%, #2d5dd4 60%);
+  background: linear-gradient(to right, #66d0ff 0%, #2d5dd4 100%);
 }
 
 .login-view__submit:disabled {
@@ -159,8 +179,10 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 16px;
-  padding: 24px 0;
+  max-width: 520px;
+  min-height: 220px;
 }
 
 .login-view__guard-icon {
@@ -190,75 +212,231 @@
    Game Library
    ========================================================================== */
 
-.game-library {
+/* ==========================================================================
+   App Shell — persistent header across all authenticated views
+   ========================================================================== */
+
+.app-shell {
   display: flex;
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
 }
 
-.game-library__header {
+.app-shell__header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 24px;
+  flex-direction: column;
   background-color: #171a21;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
   flex-shrink: 0;
 }
 
-.game-library__brand {
+/* Top bar — branding left, user + window controls right */
+.app-shell__topbar {
   display: flex;
-  align-items: baseline;
-  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 4px 16px;
+  -webkit-app-region: drag;
 }
 
-.game-library__title {
-  font-size: 18px;
+.app-shell__topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-shell__title {
+  font-size: 13px;
   font-weight: 700;
-  color: var(--color-text-bright);
+  color: var(--color-text-muted);
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
-.game-library__subtitle {
-  font-size: 13px;
-  color: var(--color-text-muted);
-}
-
-.game-library__user {
+.app-shell__topbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  -webkit-app-region: no-drag;
 }
 
-.game-library__username {
-  font-size: 13px;
-  color: var(--color-accent);
+.app-shell__user-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: #23262e;
+  border-radius: 2px;
+  padding: 4px 12px 4px 4px;
+  margin-right: 8px;
+}
+
+.app-shell__user-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 2px;
+  background-color: #3d4450;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b8bcbf;
+}
+
+.app-shell__username {
+  font-size: 12px;
+  color: #b8bcbf;
   font-weight: 500;
 }
 
-.game-library__sign-out {
+.app-shell__window-controls {
+  display: flex;
+  align-items: stretch;
+}
+
+.app-shell__window-btn {
   background: none;
   border: none;
   color: var(--color-text-muted);
-  font-size: 12px;
   cursor: pointer;
+  padding: 8px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.1s, color 0.1s;
+}
+
+.app-shell__window-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  color: var(--color-text-bright);
+}
+
+.app-shell__window-btn--close:hover {
+  background-color: #e81123;
+  color: white;
+}
+
+/* Nav row — Steam-style */
+.app-shell__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  background-color: #23262e;
+}
+
+.app-shell__nav-left {
+  display: flex;
+  align-items: center;
+}
+
+.app-shell__nav-arrow {
+  background: none;
+  border: none;
+  color: #b8bcbf;
+  cursor: pointer;
+  padding: 10px 8px;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+
+.app-shell__nav-arrow:hover:not(:disabled) {
+  color: white;
+}
+
+.app-shell__nav-arrow:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.app-shell__nav-tab {
+  background: none;
+  border: none;
+  color: #b8bcbf;
   font-family: inherit;
-  padding: 4px 8px;
-  border-radius: 3px;
-  transition: all 0.15s;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 12px 20px 0;
+  margin-left: 8px;
+  cursor: pointer;
+  transition: color 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
 }
 
-.game-library__sign-out:hover {
-  color: var(--color-error);
-  background-color: rgba(205, 84, 68, 0.1);
+.app-shell__nav-tab::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: transparent;
+  border-radius: 1.5px 1.5px 0 0;
+  margin-bottom: 6px;
 }
 
-.game-library__content {
+.app-shell__nav-tab:hover:not(.app-shell__nav-tab--active) {
+  color: white;
+}
+
+.app-shell__nav-tab--active {
+  color: #1a9fff;
+}
+
+.app-shell__nav-tab--active::after {
+  background: #1a9fff;
+}
+
+.app-shell__sign-out {
+  background: none;
+  border: none;
+  color: #b8bcbf;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 12px 20px 0;
+  cursor: pointer;
+  transition: color 0.15s;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.app-shell__sign-out::after {
+  content: "";
+  display: block;
+  width: 100%;
+  height: 3px;
+  background: transparent;
+  border-radius: 1.5px 1.5px 0 0;
+  margin-bottom: 6px;
+}
+
+.app-shell__sign-out:hover {
+  color: #e74c3c;
+}
+
+.app-shell__sign-out:hover::after {
+  background: #e74c3c;
+}
+
+.app-shell__content {
   flex: 1;
   overflow-y: auto;
   padding: 24px;
+}
+
+/* ==========================================================================
+   Game Library
+   ========================================================================== */
+
+.game-library {
+  height: 100%;
 }
 
 .game-library__loading,

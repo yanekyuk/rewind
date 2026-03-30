@@ -8,6 +8,8 @@ export interface UseAuthResult {
   checking: boolean;
   /** Whether credentials have been successfully stored. */
   authenticated: boolean;
+  /** The Steam username of the authenticated user. */
+  username: string | null;
   /** Whether a submission is in progress. */
   submitting: boolean;
   /** Error message from the last failed submission, if any. */
@@ -25,6 +27,7 @@ export interface UseAuthResult {
 export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [username, setUsername] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,9 +36,13 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
     let cancelled = false;
 
     invoke<boolean>("get_auth_state")
-      .then((isSet) => {
+      .then(async (isSet) => {
         if (!cancelled) {
           setAuthenticated(isSet);
+          if (isSet) {
+            const name = await invoke<string | null>("get_username");
+            if (!cancelled) setUsername(name);
+          }
           setChecking(false);
         }
       })
@@ -61,6 +68,7 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
           password,
           guardCode: guardCode ?? null,
         });
+        setUsername(username);
         setAuthenticated(true);
       } catch (err) {
         const message =
@@ -81,8 +89,9 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
 
   const signOut = useCallback(async () => {
     await invoke("clear_credentials");
+    setUsername(null);
     setAuthenticated(false);
   }, [invoke]);
 
-  return { checking, authenticated, submitting, error, submit, signOut };
+  return { checking, authenticated, username, submitting, error, submit, signOut };
 }

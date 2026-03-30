@@ -16,6 +16,9 @@
         }
       ]
     },
-    "shell:allow-stdin-write"
+    "shell:allow-stdin-write",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close"
   ]
 }

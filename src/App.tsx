@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { useAuth } from "./hooks/useAuth";
+import { AppShell } from "./components/AppShell";
 import { LoginView } from "./components/LoginView";
 import { GameLibrary } from "./components/GameLibrary";
 import { GameDetail } from "./components/GameDetail";
@@ -23,7 +24,6 @@ function App() {
       setCurrentView("game-library");
     }
   }, [authenticated]);
-
 
   const handleSelectGame = useCallback((game: GameInfo) => {
     setSelectedGame(game);
@@ -53,52 +53,48 @@ function App() {
     setCurrentView("auth-gate");
   }, [signOut]);
 
-  // Auth gate
+  // Resolve back action based on current view
+  const canGoBack = currentView !== "game-library";
+  const handleBack = useCallback(() => {
+    if (currentView === "version-select") {
+      handleBackToDetail();
+    } else if (currentView === "game-detail") {
+      handleBackToLibrary();
+    }
+  }, [currentView, handleBackToDetail, handleBackToLibrary]);
+
+  // Auth gate — no shell
   if (!authenticated || currentView === "auth-gate") {
     return <LoginView auth={auth} />;
   }
 
-  // Game library
-  if (currentView === "game-library") {
-    return (
-      <GameLibrary
-        username="Steam User"
-        onSelectGame={handleSelectGame}
-        onSignOut={handleSignOut}
-      />
-    );
-  }
-
-  // Game detail
-  if (currentView === "game-detail" && selectedGame) {
-    return (
-      <GameDetail
-        game={selectedGame}
-        onBack={handleBackToLibrary}
-        onChangeVersion={handleChangeVersion}
-      />
-    );
-  }
-
-  // Version select
-  if (currentView === "version-select" && selectedGame) {
-    return (
-      <VersionSelect
-        game={selectedGame}
-        selectedManifestId={selectedManifestId}
-        onSelectManifest={setSelectedManifestId}
-        onBack={handleBackToDetail}
-      />
-    );
-  }
-
-  // Fallback: redirect to library
+  // All authenticated views share the shell
   return (
-    <GameLibrary
-      username="Steam User"
-      onSelectGame={handleSelectGame}
+    <AppShell
+      username={auth.username ?? "Steam User"}
+      canGoBack={canGoBack}
+      onBack={handleBack}
       onSignOut={handleSignOut}
-    />
+    >
+      {currentView === "game-library" && (
+        <GameLibrary onSelectGame={handleSelectGame} />
+      )}
+
+      {currentView === "game-detail" && selectedGame && (
+        <GameDetail
+          game={selectedGame}
+          onChangeVersion={handleChangeVersion}
+        />
+      )}
+
+      {currentView === "version-select" && selectedGame && (
+        <VersionSelect
+          game={selectedGame}
+          selectedManifestId={selectedManifestId}
+          onSelectManifest={setSelectedManifestId}
+        />
+      )}
+    </AppShell>
   );
 }
 

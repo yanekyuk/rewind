@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from "react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { Rewind, X } from "lucide-react";
 import type { UseAuthResult } from "../hooks/useAuth";
 
 interface LoginViewProps {
@@ -12,9 +14,9 @@ export function LoginView({ auth }: LoginViewProps) {
 
   if (checking) {
     return (
-      <div className="login-view">
+      <div className="login-view" data-tauri-drag-region>
         <div className="login-view__card">
-          <h1 className="login-view__brand">Rewind</h1>
+          <h1 className="login-view__brand"><Rewind size={32} /> Rewind</h1>
           <p className="login-view__checking">Checking authentication status...</p>
         </div>
       </div>
@@ -23,9 +25,17 @@ export function LoginView({ auth }: LoginViewProps) {
 
   if (submitting) {
     return (
-      <div className="login-view">
+      <div className="login-view" data-tauri-drag-region>
+        <button
+          className="login-view__close"
+          onClick={() => getCurrentWindow().close()}
+          type="button"
+          title="Close"
+        >
+          <X size={20} />
+        </button>
         <div className="login-view__card">
-          <h1 className="login-view__brand">Rewind</h1>
+          <h1 className="login-view__brand"><Rewind size={32} /> Rewind</h1>
           <div className="login-view__guard">
             <div className="login-view__guard-icon" aria-hidden="true">
               <svg
@@ -59,10 +69,17 @@ export function LoginView({ auth }: LoginViewProps) {
   };
 
   return (
-    <div className="login-view">
+    <div className="login-view" data-tauri-drag-region>
+      <button
+        className="login-view__close"
+        onClick={() => getCurrentWindow().close()}
+        type="button"
+        title="Close"
+      >
+        <X size={20} />
+      </button>
       <div className="login-view__card">
-        <h1 className="login-view__brand">Rewind</h1>
-        <p className="login-view__subtitle">Steam Game Downgrader</p>
+        <h1 className="login-view__brand"><Rewind size={32} /> Rewind</h1>
 
         <form
           className="login-view__form"
@@ -72,7 +89,7 @@ export function LoginView({ auth }: LoginViewProps) {
         >
           <div className="login-view__field">
             <label htmlFor="login-username" className="login-view__label">
-              Username
+              Sign in with account name
             </label>
             <input
               id="login-username"
@@ -107,7 +124,7 @@ export function LoginView({ auth }: LoginViewProps) {
           )}
 
           <button type="submit" className="login-view__submit">
-            Sign In
+            Sign in
           </button>
         </form>
       </div>

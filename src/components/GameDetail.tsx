@@ -2,7 +2,6 @@ import type { GameInfo } from "../types/game";
 
 interface GameDetailProps {
   game: GameInfo;
-  onBack: () => void;
   onChangeVersion: () => void;
 }
 
@@ -10,19 +9,9 @@ function steamHeaderUrl(appid: string): string {
   return `https://cdn.akamai.steamstatic.com/steam/apps/${appid}/header.jpg`;
 }
 
-export function GameDetail({ game, onBack, onChangeVersion }: GameDetailProps) {
+export function GameDetail({ game, onChangeVersion }: GameDetailProps) {
   return (
     <div className="game-detail">
-      <div className="game-detail__nav">
-        <button
-          className="game-detail__back"
-          onClick={onBack}
-          type="button"
-        >
-          Back to Library
-        </button>
-      </div>
-
       <div className="game-detail__hero">
         <img
           className="game-detail__image"
