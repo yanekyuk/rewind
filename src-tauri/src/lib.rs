@@ -87,19 +87,22 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
 /// List available manifests for a depot using DepotDownloader.
 ///
 /// This Tauri IPC command:
-/// 1. Spawns DepotDownloader with the given credentials
-/// 2. Collects the manifest listing output
-/// 3. Parses it into ManifestListEntry structs
-/// 4. Returns the list to the frontend
+/// 1. Reads credentials from the AuthStore
+/// 2. Spawns DepotDownloader with stored credentials
+/// 3. Collects the manifest listing output
+/// 4. Parses it into ManifestListEntry structs
+/// 5. Returns the list to the frontend
 #[tauri::command]
 async fn list_manifests(
     app: tauri::AppHandle,
+    state: tauri::State<'_, AuthStore>,
     app_id: String,
     depot_id: String,
-    username: String,
-    password: String,
 ) -> Result<Vec<ManifestListEntry>, RewindError> {
-    depot_downloader::list_manifests(&app, &app_id, &depot_id, &username, &password).await
+    let credentials = state.get().ok_or_else(|| {
+        RewindError::AuthRequired("Credentials not set. Please sign in first.".to_string())
+    })?;
+    depot_downloader::list_manifests(&app, &app_id, &depot_id, &credentials).await
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

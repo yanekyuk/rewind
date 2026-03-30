@@ -6,12 +6,7 @@ interface UseManifestListResult {
   manifests: ManifestListEntry[];
   loading: boolean;
   error: string | null;
-  fetch: (
-    appId: string,
-    depotId: string,
-    username: string,
-    password: string,
-  ) => void;
+  fetch: (appId: string, depotId: string) => void;
 }
 
 export function useManifestList(): UseManifestListResult {
@@ -21,24 +16,14 @@ export function useManifestList(): UseManifestListResult {
   const [params, setParams] = useState<{
     appId: string;
     depotId: string;
-    username: string;
-    password: string;
   } | null>(null);
 
-  const fetch = useCallback(
-    (
-      appId: string,
-      depotId: string,
-      username: string,
-      password: string,
-    ) => {
-      setParams({ appId, depotId, username, password });
-      setLoading(true);
-      setError(null);
-      setManifests([]);
-    },
-    [],
-  );
+  const fetch = useCallback((appId: string, depotId: string) => {
+    setParams({ appId, depotId });
+    setLoading(true);
+    setError(null);
+    setManifests([]);
+  }, []);
 
   useEffect(() => {
     if (!params) return;
@@ -48,8 +33,6 @@ export function useManifestList(): UseManifestListResult {
     invoke<ManifestListEntry[]>("list_manifests", {
       appId: params.appId,
       depotId: params.depotId,
-      username: params.username,
-      password: params.password,
     })
       .then((result) => {
         if (!cancelled) {
