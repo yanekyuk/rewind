@@ -1,5 +1,6 @@
 export type StepId =
   | "select-game"
+  | "authenticate"
   | "select-version"
   | "comparing"
   | "downloading"
@@ -17,6 +18,12 @@ export const STEPS: Step[] = [
     id: "select-game",
     label: "Select Game",
     description: "Choose an installed Steam game to downgrade.",
+  },
+  {
+    id: "authenticate",
+    label: "Authenticate",
+    description:
+      "Sign in with your Steam account. Your password is never stored by Rewind.",
   },
   {
     id: "select-version",

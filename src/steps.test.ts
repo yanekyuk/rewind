@@ -2,15 +2,16 @@ import { describe, it, expect } from "vitest";
 import { STEPS, StepId } from "./steps";
 
 describe("STEPS", () => {
-  it("defines exactly 6 steps", () => {
-    expect(STEPS).toHaveLength(6);
+  it("defines exactly 7 steps", () => {
+    expect(STEPS).toHaveLength(7);
   });
 
   it("has the correct step IDs in order", () => {
     const ids = STEPS.map((s) => s.id);
     expect(ids).toEqual([
       "select-game",
-      "enter-manifest",
+      "authenticate",
+      "select-version",
       "comparing",
       "downloading",
       "applying",
