@@ -95,19 +95,19 @@ App (e.g., 570 = Dota 2)
 ### Implementation
 
 ListManifestsCommand:
-1. Calls `Apps.GetDepotDecryptionKey()` to get depot access
-2. Calls `Apps.PICSGetProductInfo()` to retrieve product metadata
-3. Navigates KeyValues tree: `app[depotId]["manifests"]["public"]`
-4. Returns manifest ID and (empty) date
+1. Calls `Apps.PICSGetProductInfo()` to retrieve product metadata
+2. Navigates KeyValues tree: `app[depotId]["manifests"]`
+3. Iterates all branches (public, beta, etc.) and extracts manifest IDs from `gid` child keys
+4. Returns manifest IDs with branch names as dates
 
 ### Limitations
 
-Steam's PICS API provides the current public manifest but not full history. Full manifest enumeration would require:
+Steam's PICS API provides the current manifest per branch but not full version history. Full historical manifest enumeration would require:
 - Polling Steam's CDN for historical versions
 - Using PICSGetChangesSince() with previous change numbers
 - Maintaining local manifest history cache
 
-Current implementation is sufficient for the most recent manifest.
+Current implementation returns manifests for all active branches (public, beta, etc.).
 
 ## Phase 3: Manifest Fetching
 
@@ -236,7 +236,7 @@ No streaming of partial objects, no compression, ASCII-safe.
 ```json
 {"type":"guard_prompt","method":"email|device|device_confirm","hint":"email@example.com"}
 ```
-Rust backend reads prompt, shows UI, writes response to sidecar stdin.
+For `email` and `device` methods, the sidecar reads a code from stdin. For `device_confirm` (phone approval), the sidecar returns immediately and SteamKit2 polls Steam's backend for the approval — no stdin interaction needed.
 
 **Success Messages**
 - `auth_success`: Login completed, session saved
@@ -260,10 +260,10 @@ Commands are synchronous request-response:
 5. Rust backend parses output and reports
 
 For interactive operations (Steam Guard), the sidecar can prompt:
-1. Sidecar outputs `guard_prompt`
-2. Sidecar blocks on `Console.ReadLine()`
-3. Rust backend reads prompt, shows UI, writes code to stdin
-4. Sidecar reads code and continues authentication
+1. Sidecar outputs `guard_prompt` with method (`email`, `device`, or `device_confirm`)
+2. For `email`/`device`: sidecar blocks on `Console.ReadLine()`, Rust backend writes code to stdin
+3. For `device_confirm` (phone approval): sidecar returns immediately, SteamKit2 polls Steam for approval
+4. Authentication continues after code/approval is received
 
 ## Error Handling
 

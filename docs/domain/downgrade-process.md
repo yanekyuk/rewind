@@ -54,8 +54,8 @@ See [decisions/manual-manifest-input](../decisions/manual-manifest-input.md) for
 
 To avoid downloading the entire game:
 
-1. Fetch manifest metadata for both the current and target versions using DepotDownloader's `-manifest-only` flag
-2. Parse both manifest files (lists of filenames, SHA hashes, sizes)
+1. Fetch manifest metadata for both the current and target versions using the SteamKit sidecar's `get-manifest` command
+2. Parse both manifests (lists of filenames, SHA hashes, sizes) from the sidecar's JSON output
 3. Compare files by SHA hash -- only files with different hashes need downloading
 4. Generate a filelist of changed files
 
