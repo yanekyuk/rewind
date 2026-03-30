@@ -1,7 +1,7 @@
 {
   "name": "rewind",
   "private": true,
-  "version": "0.8.0",
+  "version": "0.8.1",
   "type": "module",
   "scripts": {
     "ensure-sidecar": "bash -c 'TARGET=$(rustc -vV | grep host | cut -d\" \" -f2) && EXT=\"\" && case \"$TARGET\" in *windows*) EXT=\".exe\" ;; esac && SRC=\"src-tauri/binaries/DepotDownloader-${TARGET}${EXT}\" && [ -f \"$SRC\" ] || bash scripts/download-sidecar.sh --current && mkdir -p src-tauri/target/debug/binaries && ln -sf \"$(pwd)/$SRC\" \"src-tauri/target/debug/binaries/DepotDownloader-${TARGET}${EXT}\" && echo \"Sidecar ready for ${TARGET}\"'",
