@@ -325,6 +325,135 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Auth input */
+.auth-input {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.auth-input__form {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 360px;
+}
+
+.auth-input__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auth-input__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.auth-input__input {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.auth-input__input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.auth-input__input::placeholder {
+  color: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+.auth-input__guard-toggle {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.auth-input__guard-toggle:hover {
+  color: var(--color-text);
+  text-decoration-color: currentColor;
+}
+
+.auth-input__error {
+  color: #ef4444;
+  font-size: 14px;
+  margin: 0;
+}
+
+.auth-input__submit {
+  padding: 8px 20px;
+  border-radius: 6px;
+  border: 1px solid var(--color-accent);
+  background-color: var(--color-accent);
+  color: white;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  align-self: flex-start;
+}
+
+.auth-input__submit:hover:not(:disabled) {
+  background-color: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.auth-input__submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.auth-input__checking {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+.auth-input__authenticated {
+  color: var(--color-text);
+  font-size: 14px;
+  margin-top: 16px;
+}
+
+.auth-input__sign-out {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 0;
+  margin-top: 8px;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: all 0.15s;
+}
+
+.auth-input__sign-out:hover {
+  color: #ef4444;
+  text-decoration-color: currentColor;
+}
+
 /* Manifest select */
 .manifest-select {
   flex: 1;

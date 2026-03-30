@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useManifestList } from "../hooks/useManifestList";
 import type { GameInfo } from "../types/game";
 
@@ -14,19 +14,23 @@ export function ManifestSelect({
   onSelectManifest,
 }: ManifestSelectProps) {
   const { manifests, loading, error, fetch } = useManifestList();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
   const [manualId, setManualId] = useState("");
   const [useManual, setUseManual] = useState(false);
-  const [hasFetched, setHasFetched] = useState(false);
 
   const depot = selectedGame.depots[0];
   const depotId = depot?.depot_id ?? "";
 
-  const handleFetch = () => {
-    if (!username || !password || !depotId) return;
-    setHasFetched(true);
-    fetch(selectedGame.appid, depotId, username, password);
+  // Auto-fetch manifests on mount (credentials are already in AuthStore from step 2)
+  useEffect(() => {
+    if (depotId) {
+      fetch(selectedGame.appid, depotId);
+    }
+  }, [selectedGame.appid, depotId, fetch]);
+
+  const handleRetry = () => {
+    if (depotId) {
+      fetch(selectedGame.appid, depotId);
+    }
   };
 
   const handleManualSubmit = () => {
@@ -80,63 +84,6 @@ export function ManifestSelect({
     );
   }
 
-  // Credential input (before fetching)
-  if (!hasFetched) {
-    return (
-      <section className="manifest-select">
-        <h2 className="step-view__title">Select Version</h2>
-        <p className="step-view__description">
-          Sign in to Steam to browse available versions for{" "}
-          <strong>{selectedGame.name}</strong> (depot {depotId}).
-        </p>
-
-        <div className="manifest-select__auth">
-          <div className="manifest-select__field">
-            <label className="manifest-select__label" htmlFor="steam-username">
-              Steam Username
-            </label>
-            <input
-              id="steam-username"
-              className="manifest-select__input"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="Username"
-            />
-          </div>
-          <div className="manifest-select__field">
-            <label className="manifest-select__label" htmlFor="steam-password">
-              Steam Password
-            </label>
-            <input
-              id="steam-password"
-              className="manifest-select__input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Password"
-            />
-          </div>
-          <div className="manifest-select__actions">
-            <button
-              className="manifest-select__button manifest-select__button--primary"
-              onClick={handleFetch}
-              disabled={!username || !password || !depotId}
-            >
-              Fetch Versions
-            </button>
-            <button
-              className="manifest-select__link-button"
-              onClick={() => setUseManual(true)}
-            >
-              Enter manifest ID manually instead
-            </button>
-          </div>
-        </div>
-      </section>
-    );
-  }
-
   // Loading state
   if (loading) {
     return (
@@ -159,7 +106,7 @@ export function ManifestSelect({
           <div className="manifest-select__actions">
             <button
               className="manifest-select__retry-button"
-              onClick={handleFetch}
+              onClick={handleRetry}
             >
               Retry
             </button>
