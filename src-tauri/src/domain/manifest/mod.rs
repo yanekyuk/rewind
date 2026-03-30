@@ -1,8 +1,10 @@
 mod diff;
+mod json_parser;
 mod list_parser;
 mod parser;
 
 pub use diff::{diff_manifests, ManifestDiff};
+pub use json_parser::parse_manifest_json;
 pub use list_parser::parse_manifest_list;
 pub use parser::parse_manifest;
 
