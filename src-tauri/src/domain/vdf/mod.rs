@@ -4,7 +4,7 @@ mod acf;
 
 pub use parser::parse;
 pub use serializer::serialize;
-pub use acf::{AppState, InstalledDepot};
+pub use acf::{AcfPatchParams, AppState, InstalledDepot};
 
 /// A VDF value is either a string or a nested map of key-value pairs.
 /// Uses a Vec of pairs instead of a map to preserve insertion order
@@ -375,6 +375,7 @@ mod tests {
             },
             target_build_id: None,
             bytes_to_download: None,
+            full_validate_after_next_update: None,
         };
         let doc = app.to_vdf();
         let serialized = serialize(&doc);

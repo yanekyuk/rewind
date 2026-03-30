@@ -22,5 +22,6 @@
 //! - OS-level notifications
 
 pub mod depot_downloader;
+pub mod downgrade;
 pub mod sidecar;
 pub mod steam;
