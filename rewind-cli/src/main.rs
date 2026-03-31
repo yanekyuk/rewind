@@ -45,6 +45,8 @@ async fn run(
         }
     }
 
+    repair_stale_locks(&mut app);
+
     loop {
         terminal.draw(|f| ui::draw(f, &app))?;
 
@@ -148,6 +150,65 @@ async fn run(
 
     ratatui::restore();
     Ok(())
+}
+
+/// For every managed game with `acf_locked = true`, check whether Steam corrupted the
+/// StateFlags (e.g. started an update before the lock was in place).  If the ACF exists but
+/// reports StateFlags != 4, unlock it, patch it back to a fully-installed state, and re-lock.
+/// After any repair, rescan so `installed_games` reflects the corrected ACF.
+fn repair_stale_locks(app: &mut App) {
+    let candidates: Vec<_> = app
+        .games_config
+        .games
+        .iter()
+        .filter(|e| e.acf_locked)
+        .map(|e| (e.app_id, e.depot_id, e.acf_path(), e.latest_manifest_id.clone(), e.latest_buildid.clone()))
+        .collect();
+
+    let mut repaired = false;
+    for (app_id, depot_id, acf_path, latest_manifest_id, latest_buildid) in candidates {
+        if !acf_path.exists() {
+            continue;
+        }
+        let state_flags = match rewind_core::scanner::read_acf_state_flags(&acf_path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("Warning: could not read StateFlags for app {app_id}: {e}");
+                continue;
+            }
+        };
+        if state_flags == 4 {
+            continue; // healthy
+        }
+        // Steam left the ACF in an update/broken state.  Restore it by writing the
+        // latest buildid/manifest so Steam thinks the game is already up to date.
+        eprintln!(
+            "Info: repairing ACF for app {app_id} (StateFlags={state_flags}, expected 4)"
+        );
+        let _ = rewind_core::immutability::unlock_file(&acf_path);
+        if let Err(e) =
+            rewind_core::patcher::patch_acf_file(&acf_path, &latest_buildid, &latest_manifest_id, depot_id)
+        {
+            eprintln!("Warning: failed to repair ACF for app {app_id}: {e}");
+            continue;
+        }
+        if let Err(e) = rewind_core::immutability::lock_file(&acf_path) {
+            eprintln!("Warning: failed to re-lock ACF for app {app_id}: {e}");
+        }
+        repaired = true;
+    }
+
+    if repaired {
+        app.installed_games.clear();
+        for lib in &app.config.libraries.clone() {
+            let steamapps = lib.path.join("steamapps");
+            if steamapps.exists() {
+                if let Ok(games) = scanner::scan_library(&steamapps) {
+                    app.installed_games.extend(games);
+                }
+            }
+        }
+    }
 }
 
 async fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
@@ -446,16 +507,21 @@ fn switch_to_cached_version(app: &mut App, manifest_id: String) {
         .find(|e| e.app_id == game.app_id)
     {
         entry.active_manifest_id = manifest_id.clone();
-        // buildid "0" is a safe placeholder: ACF is locked so Steam can't update.
+        // Patch the ACF with the latest buildid/manifest to trick Steam into thinking
+        // the game is already on the newest version, suppressing update prompts.
+        let latest_buildid = entry.latest_buildid.clone();
+        let latest_manifest = entry.latest_manifest_id.clone();
+        let depot_id = entry.depot_id;
+        let acf_path = entry.acf_path();
         if let Err(e) = rewind_core::patcher::patch_acf_file(
-            &entry.acf_path(),
-            "0",
-            &manifest_id,
-            entry.depot_id,
+            &acf_path,
+            &latest_buildid,
+            &latest_manifest,
+            depot_id,
         ) {
             eprintln!("Warning: failed to patch ACF: {}", e);
         }
-        if let Err(e) = rewind_core::immutability::lock_file(&entry.acf_path()) {
+        if let Err(e) = rewind_core::immutability::lock_file(&acf_path) {
             eprintln!("Warning: failed to lock ACF: {}", e);
         }
         entry.acf_locked = true;
@@ -493,6 +559,11 @@ fn finalize_downgrade_from(app: &mut App, dl: PendingDownload) {
         .iter_mut()
         .find(|e| e.app_id == dl.app_id);
 
+    // Read the latest buildid from the ACF now, before we overwrite it.
+    // At this point the ACF still has the pre-downgrade (i.e. latest) values.
+    let latest_buildid = rewind_core::scanner::read_acf_buildid(&dl.acf_path)
+        .unwrap_or_else(|_| "0".to_string());
+
     if let Some(entry) = existing {
         entry.active_manifest_id = dl.manifest_id.clone();
         if !entry.cached_manifest_ids.contains(&dl.manifest_id) {
@@ -501,6 +572,7 @@ fn finalize_downgrade_from(app: &mut App, dl: PendingDownload) {
         if !entry.cached_manifest_ids.contains(&dl.current_manifest_id) {
             entry.cached_manifest_ids.push(dl.current_manifest_id.clone());
         }
+        entry.latest_buildid = latest_buildid.clone();
         entry.acf_locked = true;
     } else {
         app.games_config.games.push(rewind_core::config::GameEntry {
@@ -510,14 +582,20 @@ fn finalize_downgrade_from(app: &mut App, dl: PendingDownload) {
             install_path: dl.game_install_path.clone(),
             active_manifest_id: dl.manifest_id.clone(),
             latest_manifest_id: dl.current_manifest_id.clone(),
+            latest_buildid: latest_buildid.clone(),
             cached_manifest_ids: vec![dl.current_manifest_id.clone(), dl.manifest_id.clone()],
             acf_locked: true,
         });
     }
 
-    if let Err(e) =
-        rewind_core::patcher::patch_acf_file(&dl.acf_path, "0", &dl.manifest_id, dl.depot_id)
-    {
+    // Patch the ACF with the *latest* buildid and manifest so Steam believes the game
+    // is already on the newest version and won't queue an update.
+    if let Err(e) = rewind_core::patcher::patch_acf_file(
+        &dl.acf_path,
+        &latest_buildid,
+        &dl.current_manifest_id,
+        dl.depot_id,
+    ) {
         eprintln!("Warning: failed to patch ACF: {}", e);
     }
     if let Err(e) = rewind_core::immutability::lock_file(&dl.acf_path) {

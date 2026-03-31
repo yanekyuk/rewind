@@ -62,6 +62,18 @@ pub fn patch_acf(content: &str, buildid: &str, manifest_id: &str, depot_id: u32)
                 return format!("{}\"buildid\"\t\t\"{}\"", indent, buildid);
             }
 
+            // Clear TargetBuildID so Steam doesn't think an update is queued.
+            if depth == 1 && trimmed.starts_with("\"TargetBuildID\"") {
+                let indent = leading_whitespace(line);
+                return format!("{}\"TargetBuildID\"\t\t\"0\"", indent);
+            }
+
+            // Prevent Steam from doing a full file validation on next launch.
+            if depth == 1 && trimmed.starts_with("\"FullValidateAfterNextUpdate\"") {
+                let indent = leading_whitespace(line);
+                return format!("{}\"FullValidateAfterNextUpdate\"\t\t\"0\"", indent);
+            }
+
             // Detect depot section by its key
             if trimmed == depot_key {
                 in_depot_section = true;

@@ -76,6 +76,22 @@ pub fn scan_all_libraries() -> Result<Vec<InstalledGame>, ScannerError> {
     Ok(all)
 }
 
+/// Read just the StateFlags field from an ACF file.
+pub fn read_acf_state_flags(path: &Path) -> Result<u32, ScannerError> {
+    let content = std::fs::read_to_string(path)?;
+    Ok(extract_str_field(&content, "StateFlags")
+        .and_then(|v| v.parse::<u32>().ok())
+        .unwrap_or(0))
+}
+
+/// Read just the buildid field from an ACF file.
+pub fn read_acf_buildid(path: &Path) -> Result<String, ScannerError> {
+    let content = std::fs::read_to_string(path)?;
+    Ok(extract_str_field(&content, "buildid")
+        .unwrap_or("0")
+        .to_string())
+}
+
 fn parse_acf(path: &Path) -> Result<Option<InstalledGame>, ScannerError> {
     let content = std::fs::read_to_string(path)?;
 

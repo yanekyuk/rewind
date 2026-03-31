@@ -39,8 +39,14 @@ pub struct GameEntry {
     pub app_id: u32,
     pub depot_id: u32,
     pub install_path: PathBuf,
+    /// The manifest rewind actually has on disk (the downgraded version).
     pub active_manifest_id: String,
+    /// The latest manifest ID — written to the ACF to trick Steam into thinking
+    /// the game is already on the latest version (so it won't queue an update).
     pub latest_manifest_id: String,
+    /// The latest build ID — written to the ACF alongside `latest_manifest_id`.
+    #[serde(default)]
+    pub latest_buildid: String,
     #[serde(default)]
     pub cached_manifest_ids: Vec<String>,
     pub acf_locked: bool,
@@ -143,6 +149,7 @@ mod tests {
                 install_path: "/games/crimson-desert".into(),
                 active_manifest_id: "abc123".into(),
                 latest_manifest_id: "def456".into(),
+                latest_buildid: "22560074".into(),
                 cached_manifest_ids: vec!["abc123".into(), "def456".into()],
                 acf_locked: true,
             }],
@@ -184,6 +191,7 @@ mod tests {
             install_path: "/home/user/.steam/steamapps/common/Game".into(),
             active_manifest_id: "m1".into(),
             latest_manifest_id: "m1".into(),
+            latest_buildid: "99999".into(),
             cached_manifest_ids: vec![],
             acf_locked: false,
         };
