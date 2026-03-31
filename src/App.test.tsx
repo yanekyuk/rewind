@@ -41,7 +41,7 @@ mock.module("@tauri-apps/api/event", () => ({
   TauriEvent: {},
   emit: mock(),
   emitTo: mock(),
-  listen: mock(),
+  listen: mock(() => Promise.resolve(() => {})),
   once: mock(),
 }));
 
@@ -166,7 +166,7 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: /change version/i }));
 
     expect(screen.getByText("Current Version")).toBeInTheDocument();
-    expect(screen.getByText("Available Versions")).toBeInTheDocument();
+    expect(screen.getByText("PICS Manifests")).toBeInTheDocument();
   });
 
   it("returns to game library via back from game detail", () => {

@@ -1267,3 +1267,49 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* SteamDB History section */
+.version-select__steamdb {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.version-select__steamdb-hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-bottom: 10px;
+}
+
+.version-select__steamdb-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 3px;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.version-select__steamdb-open:hover:not(:disabled) {
+  background-color: var(--color-surface-light);
+  border-color: var(--color-accent);
+}
+
+.version-select__steamdb-open:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.version-select__list-heading {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin: 12px 0 6px;
+}
