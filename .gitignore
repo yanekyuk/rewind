@@ -1,0 +1,16 @@
+# Rust
+/target/
+Cargo.lock
+
+# Claude Code
+.claude/settings.local.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*.swo
