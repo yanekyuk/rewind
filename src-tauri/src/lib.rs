@@ -135,8 +135,14 @@ async fn list_manifests(
 pub fn run() {
     // Pre-populate AuthStore from the OS keychain if credentials were saved previously.
     let auth_store = AuthStore::default();
-    if let Some(saved) = load_from_keychain() {
-        let _ = auth_store.set(saved);
+    match load_from_keychain() {
+        Some(saved) => {
+            eprintln!("[startup] loaded credentials from keychain for user: {}", saved.username);
+            let _ = auth_store.set(saved);
+        }
+        None => {
+            eprintln!("[startup] no credentials found in keychain");
+        }
     }
 
     tauri::Builder::default()

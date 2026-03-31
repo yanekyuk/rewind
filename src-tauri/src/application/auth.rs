@@ -1,5 +1,5 @@
-//! In-memory credential store for the application session, with optional
-//! OS keychain persistence via the `keyring` crate.
+//! In-memory credential store for the application session, with
+//! OS keychain persistence (fallback to file-based storage).
 
 use std::sync::Mutex;
 
@@ -8,44 +8,84 @@ use crate::domain::auth::Credentials;
 const KEYCHAIN_SERVICE: &str = "rewind";
 const KEYCHAIN_ACCOUNT: &str = "steam-credentials";
 
-/// Persist credentials to the OS keychain (macOS Keychain, Windows Credential
-/// Manager, Linux libsecret). Stores a JSON payload so a single entry holds
-/// both username and password.
-///
-/// Silently ignores errors so keychain unavailability never blocks the app.
+fn credentials_file() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("rewind").join("credentials.json"))
+}
+
+/// Persist credentials. Tries OS keychain first, falls back to file.
 pub fn save_to_keychain(credentials: &Credentials) {
-    if let Ok(payload) = serde_json::to_string(credentials) {
-        if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
-            let _ = entry.set_password(&payload);
+    let payload = match serde_json::to_string(credentials) {
+        Ok(p) => p,
+        Err(_) => return,
+    };
+
+    // Try OS keychain
+    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+        if entry.set_password(&payload).is_ok() {
+            eprintln!("[auth] saved credentials to OS keychain");
+            return;
+        }
+    }
+
+    // Fallback: file-based
+    if let Some(path) = credentials_file() {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::write(&path, &payload) {
+            Ok(_) => eprintln!("[auth] saved credentials to {}", path.display()),
+            Err(e) => eprintln!("[auth] failed to save credentials file: {}", e),
         }
     }
 }
 
-/// Load credentials from the OS keychain, if any were previously saved.
+/// Load credentials. Tries OS keychain first, falls back to file.
 pub fn load_from_keychain() -> Option<Credentials> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).ok()?;
-    let payload = entry.get_password().ok()?;
-    serde_json::from_str(&payload).ok()
+    // Try OS keychain
+    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
+        if let Ok(payload) = entry.get_password() {
+            if let Ok(creds) = serde_json::from_str(&payload) {
+                eprintln!("[auth] loaded credentials from OS keychain");
+                return Some(creds);
+            }
+        }
+    }
+
+    // Fallback: file-based
+    let path = credentials_file()?;
+    match std::fs::read_to_string(&path) {
+        Ok(payload) => match serde_json::from_str(&payload) {
+            Ok(creds) => {
+                eprintln!("[auth] loaded credentials from {}", path.display());
+                Some(creds)
+            }
+            Err(e) => {
+                eprintln!("[auth] failed to parse credentials file: {}", e);
+                None
+            }
+        },
+        Err(_) => {
+            eprintln!("[auth] no credentials file found");
+            None
+        }
+    }
 }
 
-/// Remove saved credentials from the OS keychain.
+/// Remove saved credentials from keychain and file.
 pub fn clear_from_keychain() {
     if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
         let _ = entry.delete_credential();
     }
+    if let Some(path) = credentials_file() {
+        let _ = std::fs::remove_file(&path);
+    }
+    eprintln!("[auth] cleared saved credentials");
 }
 
 /// Thread-safe, in-memory credential store.
 ///
 /// Managed as Tauri application state. The `Mutex` ensures safe concurrent
 /// access from multiple IPC command handlers.
-///
-/// # Lifecycle
-///
-/// - Created empty when the app starts (via `Default`)
-/// - Populated when the user submits credentials via `set_credentials`
-/// - Read when spawning the SteamKit sidecar
-/// - Dropped when the app exits (credentials are never persisted)
 #[derive(Default)]
 pub struct AuthStore {
     credentials: Mutex<Option<Credentials>>,

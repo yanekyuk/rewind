@@ -376,6 +376,9 @@ mod tests {
             target_build_id: None,
             bytes_to_download: None,
             full_validate_after_next_update: None,
+            last_updated: None,
+            last_played: None,
+            size_on_disk: None,
         };
         let doc = app.to_vdf();
         let serialized = serialize(&doc);
