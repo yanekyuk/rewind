@@ -51,7 +51,9 @@ pub fn find_steam_libraries() -> Result<Vec<PathBuf>, ScannerError> {
     let steam_dir = SteamDir::locate().map_err(|_| ScannerError::SteamNotFound)?;
     let mut paths = Vec::new();
 
-    let libraries = steam_dir.libraries().map_err(|_| ScannerError::SteamNotFound)?;
+    let libraries = steam_dir
+        .libraries()
+        .map_err(|_| ScannerError::SteamNotFound)?;
     for lib in libraries {
         if let Ok(lib) = lib {
             paths.push(lib.path().to_path_buf());
@@ -84,7 +86,9 @@ fn parse_acf(path: &Path) -> Result<Option<InstalledGame>, ScannerError> {
             msg: "missing appid".into(),
         })?;
 
-    let name = extract_str_field(&content, "name").unwrap_or_default().to_string();
+    let name = extract_str_field(&content, "name")
+        .unwrap_or_default()
+        .to_string();
 
     let state_flags = extract_str_field(&content, "StateFlags")
         .and_then(|v| v.parse::<u32>().ok())
@@ -99,12 +103,11 @@ fn parse_acf(path: &Path) -> Result<Option<InstalledGame>, ScannerError> {
     let steamapps = path.parent().unwrap_or(Path::new("."));
     let install_path = steamapps.join("common").join(installdir);
 
-    let (depot_id, manifest_id) = extract_first_depot(&content).ok_or_else(|| {
-        ScannerError::AcfParse {
+    let (depot_id, manifest_id) =
+        extract_first_depot(&content).ok_or_else(|| ScannerError::AcfParse {
             path: path.to_path_buf(),
             msg: "no InstalledDepots found".into(),
-        }
-    })?;
+        })?;
 
     Ok(Some(InstalledGame {
         app_id,
@@ -201,12 +204,12 @@ fn extract_quoted_only(s: &str) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     fn write_acf(dir: &Path, app_id: u32, name: &str, manifest_id: &str, depot_id: u32) {
         let content = format!(
-r#""AppState"
+            r#""AppState"
 {{
 	"appid"		"{app_id}"
 	"Universe"	"1"

@@ -1,6 +1,6 @@
 // rewind-core/src/config.rs
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -123,7 +123,9 @@ mod tests {
     fn config_roundtrip() {
         let config = Config {
             steam_username: Some("testuser".into()),
-            libraries: vec![Library { path: "/tmp/steamapps".into() }],
+            libraries: vec![Library {
+                path: "/tmp/steamapps".into(),
+            }],
         };
         let toml_str = toml::to_string_pretty(&config).unwrap();
         let parsed: Config = toml::from_str(&toml_str).unwrap();

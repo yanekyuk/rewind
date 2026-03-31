@@ -6,16 +6,16 @@
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│  rewind                                    [?] help  │
+│  rewind                                    [?] help │
 ├─────────────────┬───────────────────────────────────┤
 │ GAMES           │  Crimson Desert                   │
 │                 │  App ID: 3321460                  │
-│ > Crimson Desert│  Status: ▼ Downgraded             │
+│ > Crimson Desert│  Status:  Downgraded              │
 │   Elden Ring    │  Active:  1.00 (manifest abc123)  │
 │   Dark Souls III│  Latest:  1.01 (manifest def456)  │
 │                 │  Cached:  1.00, 1.01              │
 │                 │                                   │
-│                 │  [D] Downgrade  [U] Upgrade        │
+│                 │  [D] Downgrade  [U] Upgrade       │
 │                 │  [L] Lock ACF   [O] Open SteamDB  │
 ├─────────────────┴───────────────────────────────────┤
 │ [A] Add library  [S] Settings  [Q] Quit             │
