@@ -19,8 +19,8 @@ describe("useManifestList", () => {
 
   it("fetches manifests with only appId and depotId (no credentials)", async () => {
     const mockManifests = [
-      { manifest_id: "111", date: "2025-01-01" },
-      { manifest_id: "222", date: "2025-01-02" },
+      { manifest_id: "111", branch: "public" },
+      { manifest_id: "222", branch: "beta" },
     ];
     mockInvoke.mockResolvedValue(mockManifests);
 
@@ -116,7 +116,7 @@ describe("useManifestList", () => {
   });
 
   it("clears previous state on new fetch", async () => {
-    const mockManifests = [{ manifest_id: "111", date: "2025-01-01" }];
+    const mockManifests = [{ manifest_id: "111", branch: "public" }];
     mockInvoke.mockResolvedValue(mockManifests);
 
     const { result } = renderHook(() => useManifestList(mockInvoke));
@@ -129,7 +129,7 @@ describe("useManifestList", () => {
     expect(result.current.manifests).toHaveLength(1);
 
     // Fetch again
-    const newManifests = [{ manifest_id: "333", date: "2025-02-01" }];
+    const newManifests = [{ manifest_id: "333", branch: "bleeding-edge" }];
     mockInvoke.mockResolvedValue(newManifests);
 
     act(() => {

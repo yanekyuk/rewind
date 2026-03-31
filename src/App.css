@@ -1091,11 +1091,50 @@
   background-color: var(--color-accent-dim);
 }
 
-.version-row__date {
-  font-weight: 500;
+.version-row--current {
+  border-color: var(--color-accent);
+  background-color: rgba(102, 192, 244, 0.05);
+}
+
+.version-row__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   flex: 1;
   min-width: 0;
+}
+
+.version-row__branch {
+  font-weight: 500;
   color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version-row__current-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-accent);
+  background-color: rgba(102, 192, 244, 0.1);
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.version-row__pwd {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.version-row__time {
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 .version-row__id {
@@ -1104,4 +1143,66 @@
   font-variant-numeric: tabular-nums;
   flex-shrink: 0;
   margin-left: 16px;
+}
+
+.version-select__manual {
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border);
+  margin-top: 16px;
+}
+
+.version-select__manual-hint {
+  font-size: 13px;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+}
+
+.version-select__manual-row {
+  display: flex;
+  gap: 8px;
+}
+
+.version-select__manual-input {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: 14px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.version-select__manual-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.version-select__manual-input:focus {
+  border-color: var(--color-accent);
+}
+
+.version-select__manual-button {
+  padding: 8px 20px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.version-select__manual-button:hover:not(:disabled) {
+  background-color: var(--color-surface-light);
+  border-color: var(--color-accent);
+}
+
+.version-select__manual-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }

@@ -72,8 +72,8 @@ Lists available manifest IDs for a depot.
 ```json
 {"type":"log","level":"info","message":"Requesting manifest history for app 570, depot 373307..."}
 {"type":"manifest_list","manifests":[
-  {"id":"1234567890","date":""},
-  {"id":"9876543210","date":""}
+  {"id":"1234567890","branch":"public","time_updated":1711123305},
+  {"id":"9876543210","branch":"beta","pwd_required":true}
 ]}
 {"type":"done","success":true}
 ```

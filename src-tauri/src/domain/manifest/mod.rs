@@ -47,15 +47,21 @@ pub struct ManifestEntry {
 /// A single entry from a manifest listing (available versions for a depot).
 ///
 /// Returned by the SteamKit sidecar when listing manifests as newline-delimited JSON.
-/// Both `manifest_id` and `date` are required fields.
+/// The `manifest_id` is required; all other fields are optional.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ManifestListEntry {
     /// The manifest identifier (large numeric ID as string for JSON safety).
     #[serde(alias = "id")]
     pub manifest_id: String,
-    /// Date/time string from the sidecar output (branch name or timestamp).
+    /// Steam branch name (e.g., "public", "beta", "bleeding-edge").
     #[serde(default)]
-    pub date: String,
+    pub branch: Option<String>,
+    /// Unix timestamp of when the branch was last updated.
+    #[serde(default)]
+    pub time_updated: Option<u64>,
+    /// Whether the branch requires a password to access.
+    #[serde(default)]
+    pub pwd_required: Option<bool>,
 }
 
 /// Errors that can occur when parsing a depot manifest.

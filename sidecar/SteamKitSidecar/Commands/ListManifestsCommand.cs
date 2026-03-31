@@ -44,33 +44,52 @@ public static class ListManifestsCommand
                                 continue;
                             }
 
-                            // Debug: dump depot keys to see structure
-                            var depotKeys = string.Join(", ", depot.Children.Select(c => c.Name));
-                            JsonOutput.Info($"Depot {depotId} keys: [{depotKeys}]");
+                            // Collect branch metadata (timeupdated, pwdrequired) from
+                            // the app-level "branches" section under depots.
+                            var branchMeta = new Dictionary<string, (ulong? timeUpdated, bool pwdRequired)>();
+                            var branchesSection = depots["branches"];
+                            if (branchesSection != KeyValue.Invalid)
+                            {
+                                foreach (var branchKv in branchesSection.Children)
+                                {
+                                    var branchName = branchKv.Name;
+                                    if (branchName == null) continue;
+
+                                    ulong? timeUpdated = null;
+                                    var timeVal = branchKv["timeupdated"]?.Value;
+                                    if (timeVal != null && ulong.TryParse(timeVal, out var ts))
+                                        timeUpdated = ts;
+
+                                    var pwdVal = branchKv["pwdrequired"]?.Value;
+                                    var pwdRequired = pwdVal == "1";
+
+                                    branchMeta[branchName] = (timeUpdated, pwdRequired);
+                                }
+                            }
 
                             var manifestsSection = depot["manifests"];
                             if (manifestsSection != KeyValue.Invalid)
                             {
-                                var childDescs = manifestsSection.Children.Select(c =>
-                                {
-                                    if (c.Value != null)
-                                        return $"{c.Name}={c.Value}";
-                                    var nested = string.Join(",", c.Children.Select(cc => $"{cc.Name}={cc.Value}"));
-                                    return $"{c.Name}=({nested})";
-                                });
-                                JsonOutput.Info($"manifests children: [{string.Join(", ", childDescs)}]");
-
                                 foreach (var branch in manifestsSection.Children)
                                 {
                                     // Branch may have Value directly or a nested "gid" child
                                     var manifestId = branch.Value ?? branch["gid"]?.Value;
                                     if (manifestId != null)
                                     {
-                                        manifests.Add(new ManifestListItem
+                                        var branchName = branch.Name ?? "unknown";
+                                        var item = new ManifestListItem
                                         {
                                             Id = manifestId,
-                                            Date = branch.Name ?? "unknown",
-                                        });
+                                            Branch = branchName,
+                                        };
+
+                                        if (branchMeta.TryGetValue(branchName, out var meta))
+                                        {
+                                            item.TimeUpdated = meta.timeUpdated;
+                                            item.PwdRequired = meta.pwdRequired;
+                                        }
+
+                                        manifests.Add(item);
                                     }
                                 }
                             }
