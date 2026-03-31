@@ -1,0 +1,16 @@
+[package]
+name = "rewind-cli"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "rewind"
+path = "src/main.rs"
+
+[dependencies]
+rewind-core = { path = "../rewind-core" }
+ratatui = "0.29"
+crossterm = "0.28"
+tokio = { version = "1", features = ["full"] }
+open = "5"
+anyhow = "1"

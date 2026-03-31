@@ -1,0 +1,3 @@
+[workspace]
+members = ["rewind-core", "rewind-cli"]
+resolver = "2"
