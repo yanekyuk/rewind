@@ -7,26 +7,40 @@ const mockInvoke = mock() as any;
 describe("useAuth", () => {
   beforeEach(() => {
     mockInvoke.mockReset();
-    // Default: get_auth_state returns false
+    // Default: check_session returns null (no saved session)
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(false);
+      if (cmd === "check_session") return Promise.resolve(null);
       return Promise.resolve();
     });
   });
 
-  it("starts in idle state with no error", async () => {
+  it("starts in checking state", () => {
+    const { result } = renderHook(() => useAuth(mockInvoke));
+    expect(result.current.checking).toBe(true);
+  });
+
+  it("finishes checking with no auth when no saved session", async () => {
     const { result } = renderHook(() => useAuth(mockInvoke));
 
     await waitFor(() => expect(result.current.checking).toBe(false));
 
     expect(result.current.authenticated).toBe(false);
+    expect(result.current.username).toBeNull();
     expect(result.current.submitting).toBe(false);
     expect(result.current.error).toBeNull();
   });
 
-  it("checks auth state on mount via get_auth_state", async () => {
+  it("checks for saved session on mount via check_session", async () => {
+    const { result } = renderHook(() => useAuth(mockInvoke));
+
+    await waitFor(() => expect(result.current.checking).toBe(false));
+
+    expect(mockInvoke).toHaveBeenCalledWith("check_session");
+  });
+
+  it("auto-authenticates when check_session returns a username", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(true);
+      if (cmd === "check_session") return Promise.resolve("saveduser");
       return Promise.resolve();
     });
 
@@ -34,14 +48,28 @@ describe("useAuth", () => {
 
     await waitFor(() => expect(result.current.checking).toBe(false));
 
-    expect(mockInvoke).toHaveBeenCalledWith("get_auth_state");
     expect(result.current.authenticated).toBe(true);
+    expect(result.current.username).toBe("saveduser");
   });
 
-  it("submits auth via set_credentials IPC command", async () => {
+  it("handles check_session rejection gracefully", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(false);
-      if (cmd === "set_credentials") return Promise.resolve();
+      if (cmd === "check_session") return Promise.reject("No session");
+      return Promise.resolve();
+    });
+
+    const { result } = renderHook(() => useAuth(mockInvoke));
+
+    await waitFor(() => expect(result.current.checking).toBe(false));
+
+    expect(result.current.authenticated).toBe(false);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("submits auth via login IPC command", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "check_session") return Promise.resolve(null);
+      if (cmd === "login") return Promise.resolve();
       return Promise.resolve();
     });
 
@@ -52,19 +80,20 @@ describe("useAuth", () => {
       await result.current.submit("testuser", "testpass");
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith("set_credentials", {
+    expect(mockInvoke).toHaveBeenCalledWith("login", {
       username: "testuser",
       password: "testpass",
       guardCode: null,
     });
     expect(result.current.authenticated).toBe(true);
+    expect(result.current.username).toBe("testuser");
     expect(result.current.error).toBeNull();
   });
 
   it("submits auth with guard code when provided", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(false);
-      if (cmd === "set_credentials") return Promise.resolve();
+      if (cmd === "check_session") return Promise.resolve(null);
+      if (cmd === "login") return Promise.resolve();
       return Promise.resolve();
     });
 
@@ -75,7 +104,7 @@ describe("useAuth", () => {
       await result.current.submit("testuser", "testpass", "ABC123");
     });
 
-    expect(mockInvoke).toHaveBeenCalledWith("set_credentials", {
+    expect(mockInvoke).toHaveBeenCalledWith("login", {
       username: "testuser",
       password: "testpass",
       guardCode: "ABC123",
@@ -85,9 +114,8 @@ describe("useAuth", () => {
 
   it("sets error state when submit fails", async () => {
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(false);
-      if (cmd === "set_credentials")
-        return Promise.reject("Invalid credentials");
+      if (cmd === "check_session") return Promise.resolve(null);
+      if (cmd === "login") return Promise.reject("Invalid credentials");
       return Promise.resolve();
     });
 
@@ -109,8 +137,8 @@ describe("useAuth", () => {
     });
 
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(false);
-      if (cmd === "set_credentials") return submitPromise;
+      if (cmd === "check_session") return Promise.resolve(null);
+      if (cmd === "login") return submitPromise;
       return Promise.resolve();
     });
 
@@ -133,63 +161,12 @@ describe("useAuth", () => {
     expect(result.current.authenticated).toBe(true);
   });
 
-  // Hypothesis: The bug occurs because set_credentials ignores the keychain-loaded
-  // password in AuthStore, always using the password from IPC arguments. When the
-  // sidecar session expires, the empty password causes login failure. The fix adds a
-  // dedicated resume_session IPC command that uses the credentials already in AuthStore.
-  it("resumeSession calls resume_session IPC instead of set_credentials", async () => {
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(true);
-      if (cmd === "get_username") return Promise.resolve("saveduser");
-      if (cmd === "has_credentials") return Promise.resolve(true);
-      if (cmd === "resume_session") return Promise.resolve();
-      return Promise.resolve();
-    });
-
-    const { result } = renderHook(() => useAuth(mockInvoke));
-    await waitFor(() => expect(result.current.checking).toBe(false));
-
-    expect(result.current.hasStoredCredentials).toBe(true);
-
-    await act(async () => {
-      await result.current.resumeSession();
-    });
-
-    // Should call resume_session, NOT set_credentials
-    expect(mockInvoke).toHaveBeenCalledWith("resume_session");
-    expect(result.current.authenticated).toBe(true);
-    expect(result.current.error).toBeNull();
-  });
-
-  it("resumeSession sets error state on failure", async () => {
-    mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(true);
-      if (cmd === "get_username") return Promise.resolve("saveduser");
-      if (cmd === "has_credentials") return Promise.resolve(true);
-      if (cmd === "resume_session") return Promise.reject("Session expired");
-      return Promise.resolve();
-    });
-
-    const { result } = renderHook(() => useAuth(mockInvoke));
-    await waitFor(() => expect(result.current.checking).toBe(false));
-
-    await act(async () => {
-      await result.current.resumeSession();
-    });
-
-    // authenticated stays true (credentials still exist), but error is set
-    // so the UI can show the error message on the "Welcome back" screen
-    expect(result.current.error).toBe("Session expired");
-  });
-
   it("clears previous error on new submission", async () => {
-    mockInvoke
-      .mockImplementation((cmd: string) => {
-        if (cmd === "get_auth_state") return Promise.resolve(false);
-        if (cmd === "set_credentials")
-          return Promise.reject("Invalid credentials");
-        return Promise.resolve();
-      });
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "check_session") return Promise.resolve(null);
+      if (cmd === "login") return Promise.reject("Invalid credentials");
+      return Promise.resolve();
+    });
 
     const { result } = renderHook(() => useAuth(mockInvoke));
     await waitFor(() => expect(result.current.checking).toBe(false));
@@ -202,8 +179,8 @@ describe("useAuth", () => {
 
     // Second attempt succeeds
     mockInvoke.mockImplementation((cmd: string) => {
-      if (cmd === "get_auth_state") return Promise.resolve(false);
-      if (cmd === "set_credentials") return Promise.resolve();
+      if (cmd === "check_session") return Promise.resolve(null);
+      if (cmd === "login") return Promise.resolve();
       return Promise.resolve();
     });
 
@@ -212,5 +189,24 @@ describe("useAuth", () => {
     });
     expect(result.current.error).toBeNull();
     expect(result.current.authenticated).toBe(true);
+  });
+
+  it("signOut calls logout IPC and clears state", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "check_session") return Promise.resolve("testuser");
+      if (cmd === "logout") return Promise.resolve();
+      return Promise.resolve();
+    });
+
+    const { result } = renderHook(() => useAuth(mockInvoke));
+    await waitFor(() => expect(result.current.authenticated).toBe(true));
+
+    await act(async () => {
+      await result.current.signOut();
+    });
+
+    expect(mockInvoke).toHaveBeenCalledWith("logout");
+    expect(result.current.authenticated).toBe(false);
+    expect(result.current.username).toBeNull();
   });
 });
