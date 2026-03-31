@@ -1,9 +1,17 @@
-import { afterEach, describe, it, expect, mock } from "bun:test";
+import { afterEach, afterAll, describe, it, expect, mock, beforeEach } from "bun:test";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
-import { GameDetail } from "./GameDetail";
 import type { GameInfo } from "../types/game";
 
+const mockUseDepotList = mock();
+
+mock.module("../hooks/useDepotList", () => ({
+  useDepotList: () => mockUseDepotList(),
+}));
+
+const { GameDetail } = await import("./GameDetail");
+
 afterEach(cleanup);
+afterAll(() => mock.restore());
 
 const mockGame: GameInfo = {
   appid: "3321460",
@@ -12,30 +20,56 @@ const mockGame: GameInfo = {
   installdir: "Crimson Desert",
   depots: [{ depot_id: "3321461", manifest: "744665017", size: "133575233011" }],
   install_path: "/steamapps/common/Crimson Desert",
+  state_flags: 4,
+  update_pending: false,
+  target_build_id: null,
+  bytes_to_download: null,
+  size_on_disk: "133575233011",
+  last_updated: null,
 };
 
-describe("GameDetail", () => {
-  it("displays the game name", () => {
-    render(
-      <GameDetail game={mockGame} onBack={mock()} onChangeVersion={mock()} />,
-    );
-    expect(screen.getByText("Crimson Desert")).toBeInTheDocument();
-  });
+const mockSteamDepots = [
+  { depot_id: "3321461", name: "Crimson Desert Content", max_size: 133575233011, dlc_app_id: null },
+  { depot_id: "3321462", name: "Crimson Desert DLC", max_size: 5000000000, dlc_app_id: "3321470" },
+  { depot_id: "3321463", name: "Crimson Desert Soundtrack", max_size: 800000000, dlc_app_id: null },
+];
 
-  it("displays the game header image from Steam CDN", () => {
-    render(
-      <GameDetail game={mockGame} onBack={mock()} onChangeVersion={mock()} />,
-    );
-    const img = screen.getByRole("img");
-    expect(img).toHaveAttribute(
-      "src",
-      "https://cdn.akamai.steamstatic.com/steam/apps/3321460/header.jpg",
-    );
+function depotListLoaded() {
+  return {
+    depots: mockSteamDepots,
+    loading: false,
+    error: null,
+    fetch: mock(),
+  };
+}
+
+function depotListLoading() {
+  return {
+    depots: [],
+    loading: true,
+    error: null,
+    fetch: mock(),
+  };
+}
+
+function depotListError() {
+  return {
+    depots: [],
+    loading: false,
+    error: "Network error",
+    fetch: mock(),
+  };
+}
+
+describe("GameDetail", () => {
+  beforeEach(() => {
+    mockUseDepotList.mockReset();
+    mockUseDepotList.mockReturnValue(depotListLoaded());
   });
 
   it("displays game metadata (app ID, build ID)", () => {
     render(
-      <GameDetail game={mockGame} onBack={mock()} onChangeVersion={mock()} />,
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
     );
     expect(screen.getByText(/3321460/)).toBeInTheDocument();
     expect(screen.getByText(/22560074/)).toBeInTheDocument();
@@ -43,34 +77,111 @@ describe("GameDetail", () => {
 
   it("has a Change Version button", () => {
     render(
-      <GameDetail game={mockGame} onBack={mock()} onChangeVersion={mock()} />,
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
     );
     expect(
       screen.getByRole("button", { name: /change version/i }),
     ).toBeInTheDocument();
   });
 
-  it("calls onChangeVersion when the button is clicked", () => {
+  it("calls onChangeVersion with depot ID when a depot's change version button is clicked", () => {
     const onChangeVersion = mock();
     render(
       <GameDetail
         game={mockGame}
-        onBack={mock()}
         onChangeVersion={onChangeVersion}
       />,
     );
 
+    // Click the main Change Version button (uses first installed depot)
     fireEvent.click(screen.getByRole("button", { name: /change version/i }));
     expect(onChangeVersion).toHaveBeenCalledTimes(1);
+    expect(onChangeVersion).toHaveBeenCalledWith("3321461");
   });
 
-  it("calls onBack when back button is clicked", () => {
-    const onBack = mock();
+  it("displays installed depots with manifest info", () => {
     render(
-      <GameDetail game={mockGame} onBack={onBack} onChangeVersion={mock()} />,
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
+    );
+    // Installed depot should show the depot ID
+    expect(screen.getByText(/3321461/)).toBeInTheDocument();
+    // Installed depot should show the manifest
+    expect(screen.getByText("744665017")).toBeInTheDocument();
+  });
+
+  it("displays non-installed depots from Steam with distinct styling", () => {
+    render(
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
+    );
+    // Non-installed depot should be shown
+    expect(screen.getByText(/3321462/)).toBeInTheDocument();
+    expect(screen.getByText(/Crimson Desert DLC/)).toBeInTheDocument();
+
+    // Non-installed depot should show "Not installed" label
+    expect(screen.getAllByText(/not installed/i).length).toBeGreaterThan(0);
+  });
+
+  it("shows depot name from Steam when available", () => {
+    render(
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
+    );
+    expect(screen.getByText(/Crimson Desert Content/)).toBeInTheDocument();
+    expect(screen.getByText(/Crimson Desert DLC/)).toBeInTheDocument();
+    expect(screen.getByText(/Crimson Desert Soundtrack/)).toBeInTheDocument();
+  });
+
+  it("gracefully shows only installed depots when list_depots fails", () => {
+    mockUseDepotList.mockReturnValue(depotListError());
+
+    render(
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /back/i }));
-    expect(onBack).toHaveBeenCalledTimes(1);
+    // Installed depot should still show
+    expect(screen.getByText(/3321461/)).toBeInTheDocument();
+    expect(screen.getByText("744665017")).toBeInTheDocument();
+
+    // Non-installed depots should not appear
+    expect(screen.queryByText(/3321462/)).not.toBeInTheDocument();
+  });
+
+  it("shows loading state while fetching depots", () => {
+    mockUseDepotList.mockReturnValue(depotListLoading());
+
+    render(
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
+    );
+
+    // Installed depots should still show
+    expect(screen.getByText(/3321461/)).toBeInTheDocument();
+  });
+
+  it("marks non-installed depots with the not-installed modifier class", () => {
+    const { container } = render(
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
+    );
+
+    const notInstalledDepots = container.querySelectorAll(
+      ".game-detail__depot--not-installed",
+    );
+    // depot 3321462 and 3321463 are not installed
+    expect(notInstalledDepots.length).toBe(2);
+  });
+
+  it("makes all depots selectable for version browsing", () => {
+    const onChangeVersion = mock();
+    const { container } = render(
+      <GameDetail game={mockGame} onChangeVersion={onChangeVersion} />,
+    );
+
+    // Each depot should have a "Browse Versions" button
+    const browseButtons = container.querySelectorAll(
+      ".game-detail__depot-browse",
+    );
+    expect(browseButtons.length).toBe(3);
+
+    // Click browse on a non-installed depot
+    fireEvent.click(browseButtons[1]); // 3321462
+    expect(onChangeVersion).toHaveBeenCalledWith("3321462");
   });
 });

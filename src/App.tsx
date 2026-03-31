@@ -18,6 +18,7 @@ function App() {
   const [selectedManifestId, setSelectedManifestId] = useState<string | null>(
     null,
   );
+  const [selectedDepotId, setSelectedDepotId] = useState<string | null>(null);
 
   useEffect(() => {
     if (authenticated) {
@@ -36,8 +37,9 @@ function App() {
     setCurrentView("game-library");
   }, []);
 
-  const handleChangeVersion = useCallback(() => {
+  const handleChangeVersion = useCallback((depotId: string) => {
     setSelectedManifestId(null);
+    setSelectedDepotId(depotId);
     setCurrentView("version-select");
   }, []);
 
@@ -103,6 +105,7 @@ function App() {
             {selectedGame && currentView === "version-select" && (
               <VersionSelect
                 game={selectedGame}
+                depotId={selectedDepotId}
                 selectedManifestId={selectedManifestId}
                 onSelectManifest={setSelectedManifestId}
                 onAuthRequired={handleSignOut}

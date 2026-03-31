@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 use super::vdf::AppState;
@@ -25,6 +25,19 @@ pub struct DepotInfo {
     pub depot_id: String,
     pub manifest: String,
     pub size: String,
+}
+
+/// Information about a depot as reported by Steam's PICS API.
+///
+/// This is distinct from `DepotInfo`, which represents a locally installed depot
+/// (parsed from an ACF file). `SteamDepotInfo` represents a depot as it exists
+/// on Steam's servers, regardless of whether it is installed locally.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SteamDepotInfo {
+    pub depot_id: String,
+    pub name: Option<String>,
+    pub max_size: Option<u64>,
+    pub dlc_app_id: Option<String>,
 }
 
 /// Information about a single installed game, suitable for frontend display.
@@ -195,5 +208,52 @@ mod tests {
 
         assert!(json.contains("\"appid\":\"3321460\""));
         assert!(json.contains("\"name\":\"Crimson Desert\""));
+    }
+
+    #[test]
+    fn steam_depot_info_serializes_to_json() {
+        let depot = SteamDepotInfo {
+            depot_id: "3321461".to_string(),
+            name: Some("Crimson Desert Content".to_string()),
+            max_size: Some(133_575_233_011),
+            dlc_app_id: None,
+        };
+        let json = serde_json::to_string(&depot).unwrap();
+
+        assert!(json.contains("\"depot_id\":\"3321461\""));
+        assert!(json.contains("\"name\":\"Crimson Desert Content\""));
+        assert!(json.contains("\"max_size\":133575233011"));
+        assert!(json.contains("\"dlc_app_id\":null"));
+    }
+
+    #[test]
+    fn steam_depot_info_deserializes_from_json() {
+        let json = r#"{"depot_id":"3321461","name":"Content","max_size":5000,"dlc_app_id":null}"#;
+        let depot: SteamDepotInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(depot.depot_id, "3321461");
+        assert_eq!(depot.name, Some("Content".to_string()));
+        assert_eq!(depot.max_size, Some(5000));
+        assert_eq!(depot.dlc_app_id, None);
+    }
+
+    #[test]
+    fn steam_depot_info_deserializes_with_dlc_app_id() {
+        let json = r#"{"depot_id":"3321462","name":"DLC","max_size":null,"dlc_app_id":"3321470"}"#;
+        let depot: SteamDepotInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(depot.depot_id, "3321462");
+        assert_eq!(depot.dlc_app_id, Some("3321470".to_string()));
+    }
+
+    #[test]
+    fn steam_depot_info_deserializes_with_all_optional_null() {
+        let json = r#"{"depot_id":"123","name":null,"max_size":null,"dlc_app_id":null}"#;
+        let depot: SteamDepotInfo = serde_json::from_str(json).unwrap();
+
+        assert_eq!(depot.depot_id, "123");
+        assert_eq!(depot.name, None);
+        assert_eq!(depot.max_size, None);
+        assert_eq!(depot.dlc_app_id, None);
     }
 }

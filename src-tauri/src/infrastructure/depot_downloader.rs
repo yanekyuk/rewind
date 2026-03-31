@@ -1,4 +1,4 @@
-//! SteamKit sidecar manifest operations.
+//! SteamKit sidecar manifest and depot operations.
 //!
 //! Higher-level operations that use the sidecar helper to spawn the SteamKit
 //! sidecar and parse its JSON output. Each function handles argument construction,
@@ -10,7 +10,8 @@ use tauri_plugin_shell::process::CommandEvent;
 
 use crate::domain::auth::Credentials;
 use crate::domain::downgrade::DowngradeProgress;
-use crate::domain::manifest::{parse_manifest_json, parse_manifest_list, DepotManifest, ManifestListEntry};
+use crate::domain::game::SteamDepotInfo;
+use crate::domain::manifest::{parse_depot_list, parse_manifest_json, parse_manifest_list, DepotManifest, ManifestListEntry};
 use crate::error::RewindError;
 
 use super::sidecar::spawn_sidecar;
@@ -88,6 +89,86 @@ pub async fn login(
     }
 
     Ok(())
+}
+
+/// List all depots for an app using the SteamKit sidecar.
+///
+/// Spawns the SteamKit sidecar with the `list-depots` command to enumerate
+/// all depots for a given app from Steam's PICS data. Returns depot metadata
+/// including name, max size, and DLC app ID where available.
+///
+/// # Arguments
+///
+/// * `app` - Tauri application handle (needed to resolve the sidecar binary)
+/// * `app_id` - Steam application ID
+/// * `credentials` - Steam credentials (username, password, optional 2FA code)
+///
+/// # Errors
+///
+/// Returns `RewindError::Infrastructure` if the sidecar cannot be spawned
+/// or if the process exits with an error.
+/// Returns `RewindError::AuthRequired` if authentication is needed.
+pub async fn list_depots(
+    app: &AppHandle,
+    app_id: &str,
+    credentials: &Credentials,
+) -> Result<Vec<SteamDepotInfo>, RewindError> {
+    let mut args = vec!["list-depots".to_string()];
+    args.extend(build_credential_args(credentials));
+    args.extend([
+        "--app".to_string(),
+        app_id.to_string(),
+    ]);
+
+    let (mut rx, _child) =
+        spawn_sidecar(app, args).map_err(|e| {
+            RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
+        })?;
+
+    let mut stdout_buffer = String::new();
+    let mut stderr_buffer = String::new();
+
+    eprintln!("[sidecar list-depots] listing depots for app={}", app_id);
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(data) => {
+                if let Ok(line) = String::from_utf8(data) {
+                    eprintln!("[sidecar list-depots stdout] {}", line.trim());
+                    stdout_buffer.push_str(&line);
+                }
+            }
+            CommandEvent::Stderr(data) => {
+                if let Ok(line) = String::from_utf8(data) {
+                    eprintln!("[sidecar list-depots stderr] {}", line.trim());
+                    stderr_buffer.push_str(&line);
+                }
+            }
+            CommandEvent::Terminated(payload) => {
+                eprintln!("[sidecar list-depots] terminated with code {:?}", payload.code);
+                if payload.code != Some(0) {
+                    if is_auth_required_error(&stderr_buffer) {
+                        return Err(RewindError::AuthRequired(
+                            "Session expired. Please sign in again.".to_string(),
+                        ));
+                    }
+                    let detail = if stderr_buffer.is_empty() {
+                        format!(
+                            "SteamKit sidecar exited with code {:?}",
+                            payload.code
+                        )
+                    } else {
+                        extract_sidecar_error(&stderr_buffer)
+                    };
+                    return Err(RewindError::Infrastructure(detail));
+                }
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    let entries = parse_depot_list(&stdout_buffer);
+    Ok(entries)
 }
 
 /// List available manifests for a depot using the SteamKit sidecar.

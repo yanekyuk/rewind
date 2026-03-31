@@ -14,7 +14,7 @@ use application::auth::{
 use application::downgrade::{run_downgrade, DowngradeServices};
 use domain::auth::Credentials;
 use domain::downgrade::{DowngradeParams, DowngradeProgress};
-use domain::game::GameInfo;
+use domain::game::{GameInfo, SteamDepotInfo};
 use domain::manifest::{ManifestListEntry, DepotManifest};
 use domain::vdf::AcfPatchParams;
 use error::RewindError;
@@ -288,6 +288,32 @@ async fn list_manifests(
     result
 }
 
+/// List all depots for an app using the SteamKit sidecar.
+///
+/// Queries Steam's PICS API to enumerate every depot for the given app,
+/// returning metadata (name, max size, DLC app ID) for each.
+/// Uses full credentials if available, or falls back to the saved username
+/// (with empty password) to let the sidecar attempt session-token auth.
+#[tauri::command]
+async fn list_depots(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AuthStore>,
+    app_id: String,
+) -> Result<Vec<SteamDepotInfo>, RewindError> {
+    let credentials = state.get_or_saved().ok_or_else(|| {
+        RewindError::AuthRequired("No credentials available. Please sign in.".to_string())
+    })?;
+    eprintln!("[list_depots] spawning sidecar for app={}", app_id);
+    let start = std::time::Instant::now();
+    let result = depot_downloader::list_depots(&app, &app_id, &credentials).await;
+    eprintln!(
+        "[list_depots] completed in {:?} with {} entries",
+        start.elapsed(),
+        result.as_ref().map_or(0, |v| v.len())
+    );
+    result
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let saved_username = load_username();
@@ -303,6 +329,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             greet,
             list_games,
+            list_depots,
             list_manifests,
             start_downgrade,
             set_credentials,

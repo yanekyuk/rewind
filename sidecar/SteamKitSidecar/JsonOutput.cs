@@ -46,6 +46,13 @@ public static class JsonOutput
         Console.Out.Flush();
     }
 
+    public static void DepotList(List<DepotListItem> depots)
+    {
+        var obj = new { Type = "depot_list", Depots = depots };
+        Console.WriteLine(JsonSerializer.Serialize(obj, Options));
+        Console.Out.Flush();
+    }
+
     public static void Manifest(ulong depotId, string manifestId, ManifestMetadata metadata, List<ManifestFileEntry> files)
     {
         var obj = new
@@ -110,4 +117,12 @@ public class ManifestFileEntry
     public ulong Size { get; set; }
     public uint Chunks { get; set; }
     public uint Flags { get; set; }
+}
+
+public class DepotListItem
+{
+    public uint DepotId { get; set; }
+    public string? Name { get; set; }
+    public ulong? MaxSize { get; set; }
+    public uint? DlcAppId { get; set; }
 }
