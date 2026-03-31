@@ -22,9 +22,9 @@ Store the user's Steam password securely in the OS keychain so they do not have 
 ### Frontend
 
 - When `get_auth_state` returns `true` and `get_username` returns a username, the `LoginView` shows a "Welcome back, \<username\>" message with a "Sign in" button (no password re-entry needed) and a "Sign in as different user" link.
-- The "Sign in" button triggers `set_credentials` with the stored credentials (username + empty password to signal session reuse). If the sidecar session is still valid, the user proceeds without re-authenticating.
+- The "Sign in" button triggers `resume_session`, a dedicated IPC command that uses the credentials already loaded in the backend `AuthStore` (from the OS keychain at startup). No password crosses the IPC boundary. If the sidecar session is still valid, the user proceeds without re-authenticating. If the session has expired, the backend re-authenticates using the stored password automatically.
 - The "Sign in as different user" link clears credentials and shows the full login form.
-- A new `has_credentials` IPC command returns whether full credentials (username + password) are stored, distinguishing between "saved session only" and "full credentials available."
+- A `has_credentials` IPC command returns whether full credentials (username + password) are stored, distinguishing between "saved session only" and "full credentials available."
 
 ### Integration
 
