@@ -129,4 +129,4 @@ Built with Rust. Core logic lives in `rewind-core`, the TUI in `rewind-cli`.
 
 ## License
 
-MIT
+Licensed under either of [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE), at your option.
