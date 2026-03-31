@@ -147,12 +147,20 @@ export function GameDetail({ game, onChangeVersion }: GameDetailProps) {
                       Depot {depot.depot_id}
                       {depot.name && <> &mdash; {depot.name}</>}
                     </span>
-                    {depot.installed && depot.size && (
-                      <span className="game-detail__depot-size">{formatDepotSize(depot.size)}</span>
-                    )}
-                    {!depot.installed && (
-                      <span className="game-detail__depot-status">Not installed</span>
-                    )}
+                    <span className="game-detail__depot-badges">
+                      {depot.dlc_app_id && (
+                        <span className="game-detail__depot-dlc">DLC {depot.dlc_app_id}</span>
+                      )}
+                      {depot.installed && depot.size && (
+                        <span className="game-detail__depot-size">{formatDepotSize(depot.size)}</span>
+                      )}
+                      {!depot.installed && depot.max_size != null && (
+                        <span className="game-detail__depot-size">{formatDepotSize(String(depot.max_size))}</span>
+                      )}
+                      {!depot.installed && (
+                        <span className="game-detail__depot-status">Not installed</span>
+                      )}
+                    </span>
                   </div>
                   {depot.installed && depot.manifest && (
                     <div className="game-detail__depot-detail">
@@ -183,6 +191,8 @@ interface MergedDepot {
   installed: boolean;
   manifest: string | null;
   size: string | null;
+  max_size: number | null;
+  dlc_app_id: string | null;
 }
 
 function buildMergedDepots(
@@ -202,6 +212,8 @@ function buildMergedDepots(
       installed: true,
       manifest: depot.manifest,
       size: depot.size,
+      max_size: steam?.max_size ?? null,
+      dlc_app_id: steam?.dlc_app_id ?? null,
     });
   }
 
@@ -214,6 +226,8 @@ function buildMergedDepots(
         installed: false,
         manifest: null,
         size: null,
+        max_size: steam.max_size,
+        dlc_app_id: steam.dlc_app_id,
       });
     }
   }
