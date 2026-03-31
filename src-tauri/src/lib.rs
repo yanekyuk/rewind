@@ -20,6 +20,7 @@ use domain::vdf::AcfPatchParams;
 use error::RewindError;
 use infrastructure::depot_downloader;
 use infrastructure::downgrade as infra_downgrade;
+use infrastructure::sidecar::SidecarState;
 use infrastructure::steam;
 
 /// Real implementation of DowngradeServices that delegates to infrastructure.
@@ -28,6 +29,7 @@ use infrastructure::steam;
 /// layer's trait to the concrete infrastructure functions.
 struct RealDowngradeServices {
     app: tauri::AppHandle,
+    sidecar: infrastructure::sidecar::SidecarHandle,
 }
 
 impl DowngradeServices for RealDowngradeServices {
@@ -40,9 +42,9 @@ impl DowngradeServices for RealDowngradeServices {
         app_id: &str,
         depot_id: &str,
         manifest_id: &str,
-        credentials: &Credentials,
+        _credentials: &Credentials,
     ) -> Result<DepotManifest, RewindError> {
-        depot_downloader::get_manifest(&self.app, app_id, depot_id, manifest_id, credentials).await
+        depot_downloader::get_manifest(&self.sidecar, app_id, depot_id, manifest_id).await
     }
 
     async fn download(
@@ -52,16 +54,16 @@ impl DowngradeServices for RealDowngradeServices {
         manifest_id: &str,
         output_dir: &str,
         filelist_path: &str,
-        credentials: &Credentials,
+        _credentials: &Credentials,
     ) -> Result<(), RewindError> {
         depot_downloader::download(
+            &self.sidecar,
             &self.app,
             app_id,
             depot_id,
             manifest_id,
             output_dir,
             filelist_path,
-            credentials,
         )
         .await
     }
@@ -133,6 +135,7 @@ fn greet(name: &str) -> String {
 async fn set_credentials(
     app: tauri::AppHandle,
     state: tauri::State<'_, AuthStore>,
+    sidecar_state: tauri::State<'_, SidecarState>,
     username: String,
     password: String,
     guard_code: Option<String>,
@@ -143,9 +146,10 @@ async fn set_credentials(
         guard_code,
     };
 
-    // Actually authenticate with Steam via the sidecar
+    // Actually authenticate with Steam via the sidecar daemon
     eprintln!("[set_credentials] authenticating with Steam...");
-    depot_downloader::login(&app, &credentials).await?;
+    let sidecar = sidecar_state.get(&app).await?;
+    depot_downloader::login(sidecar, &credentials).await?;
     eprintln!("[set_credentials] authentication successful");
 
     save_username(&credentials.username);
@@ -173,13 +177,15 @@ async fn set_credentials(
 async fn resume_session(
     app: tauri::AppHandle,
     state: tauri::State<'_, AuthStore>,
+    sidecar_state: tauri::State<'_, SidecarState>,
 ) -> Result<(), RewindError> {
     let credentials = state.get().ok_or_else(|| {
         RewindError::AuthRequired("No stored credentials available. Please sign in.".to_string())
     })?;
 
     eprintln!("[resume_session] authenticating with stored credentials...");
-    depot_downloader::login(&app, &credentials).await?;
+    let sidecar = sidecar_state.get(&app).await?;
+    depot_downloader::login(sidecar, &credentials).await?;
     eprintln!("[resume_session] authentication successful");
 
     Ok(())
@@ -265,6 +271,7 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
 async fn start_downgrade(
     app: tauri::AppHandle,
     state: tauri::State<'_, AuthStore>,
+    sidecar_state: tauri::State<'_, SidecarState>,
     params: DowngradeParams,
 ) -> Result<(), RewindError> {
     let credentials = state.get_or_saved().ok_or_else(|| {
@@ -276,7 +283,11 @@ async fn start_downgrade(
         params.app_id, params.depot_id, params.target_manifest_id
     );
 
-    let services = RealDowngradeServices { app: app.clone() };
+    let sidecar = sidecar_state.get(&app).await?.clone();
+    let services = RealDowngradeServices {
+        app: app.clone(),
+        sidecar,
+    };
 
     let result = run_downgrade(&params, &credentials, &services).await;
 
@@ -302,15 +313,17 @@ async fn start_downgrade(
 async fn list_manifests(
     app: tauri::AppHandle,
     state: tauri::State<'_, AuthStore>,
+    sidecar_state: tauri::State<'_, SidecarState>,
     app_id: String,
     depot_id: String,
 ) -> Result<Vec<ManifestListEntry>, RewindError> {
-    let credentials = state.get_or_saved().ok_or_else(|| {
+    let _credentials = state.get_or_saved().ok_or_else(|| {
         RewindError::AuthRequired("No credentials available. Please sign in.".to_string())
     })?;
-    eprintln!("[list_manifests] spawning sidecar for app={} depot={}", app_id, depot_id);
+    let sidecar = sidecar_state.get(&app).await?;
+    eprintln!("[list_manifests] sending command for app={} depot={}", app_id, depot_id);
     let start = std::time::Instant::now();
-    let result = depot_downloader::list_manifests(&app, &app_id, &depot_id, &credentials).await;
+    let result = depot_downloader::list_manifests(sidecar, &app_id, &depot_id).await;
     eprintln!("[list_manifests] completed in {:?} with {} entries", start.elapsed(), result.as_ref().map_or(0, |v| v.len()));
     result
 }
@@ -325,14 +338,16 @@ async fn list_manifests(
 async fn list_depots(
     app: tauri::AppHandle,
     state: tauri::State<'_, AuthStore>,
+    sidecar_state: tauri::State<'_, SidecarState>,
     app_id: String,
 ) -> Result<Vec<SteamDepotInfo>, RewindError> {
-    let credentials = state.get_or_saved().ok_or_else(|| {
+    let _credentials = state.get_or_saved().ok_or_else(|| {
         RewindError::AuthRequired("No credentials available. Please sign in.".to_string())
     })?;
-    eprintln!("[list_depots] spawning sidecar for app={}", app_id);
+    let sidecar = sidecar_state.get(&app).await?;
+    eprintln!("[list_depots] sending command for app={}", app_id);
     let start = std::time::Instant::now();
-    let result = depot_downloader::list_depots(&app, &app_id, &credentials).await;
+    let result = depot_downloader::list_depots(sidecar, &app_id).await;
     eprintln!(
         "[list_depots] completed in {:?} with {} entries",
         start.elapsed(),
@@ -353,6 +368,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .manage(auth_store)
+        .manage(SidecarState::new())
         .invoke_handler(tauri::generate_handler![
             greet,
             list_games,

@@ -3239,7 +3239,7 @@ dependencies = [
 
 [[package]]
 name = "rewind"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "dirs",
  "keyring",
