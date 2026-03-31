@@ -22,7 +22,8 @@ Rewind collects Steam credentials (username, password, and optional Steam Guard 
 - On submit, the backend spawns the SteamKit sidecar `login` command to perform actual Steam authentication. This is where phone approval / Steam Guard 2FA occurs.
 - On successful authentication, the sidecar saves a session token to disk (`~/.local/share/rewind/sessions/<username>.json`). Subsequent sidecar commands reuse this token without re-authenticating.
 - Credentials are also stored in Tauri-managed application state (`tauri::State`) using a `Mutex`-protected struct for use in subsequent sidecar invocations.
-- If no credentials are stored when a sidecar operation is attempted, the command returns a typed `AuthRequired` error.
+- On app restart, if only a saved username exists (no in-memory password), the backend passes just the username to the sidecar and lets it attempt saved session authentication. If the sidecar reports `AUTH_REQUIRED` (no saved session or expired), the command returns a typed `AuthRequired` error.
+- If neither credentials nor a saved username exist when a sidecar operation is attempted, the command returns a typed `AuthRequired` error.
 
 ### Frontend
 

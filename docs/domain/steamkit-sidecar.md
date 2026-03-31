@@ -58,7 +58,7 @@ Enumerate all available manifests for a depot.
 
 **Arguments:**
 - `--username <user>` — Steam username
-- `--password <pass>` — Steam password
+- `--password <pass>` (optional) — Steam password. If omitted, the sidecar attempts saved session auth. If no saved session exists, exits with `AUTH_REQUIRED`.
 - `--app <id>` — App ID
 - `--depot <id>` — Depot ID
 - `--guard-code <code>` (optional) — Steam Guard code if needed
@@ -82,7 +82,7 @@ Fetch metadata for a specific manifest (file listing, sizes, hashes).
 
 **Arguments:**
 - `--username <user>` — Steam username
-- `--password <pass>` — Steam password
+- `--password <pass>` (optional) — Steam password. If omitted, the sidecar attempts saved session auth. If no saved session exists, exits with `AUTH_REQUIRED`.
 - `--app <id>` — App ID
 - `--depot <id>` — Depot ID
 - `--manifest <id>` — Manifest ID
@@ -112,7 +112,7 @@ Download files from a manifest.
 
 **Arguments:**
 - `--username <user>` — Steam username
-- `--password <pass>` — Steam password
+- `--password <pass>` (optional) — Steam password. If omitted, the sidecar attempts saved session auth. If no saved session exists, exits with `AUTH_REQUIRED`.
 - `--app <id>` — App ID
 - `--depot <id>` — Depot ID
 - `--manifest <id>` — Manifest ID
@@ -168,8 +168,9 @@ The sidecar does not maintain long-lived state between invocations. Each command
 For commands that require authentication, the Rust backend must:
 
 1. Call `login` once to create a session
-2. Pass the username/password to subsequent commands
+2. Pass the username (and optionally password) to subsequent commands. If a saved session exists, the sidecar can authenticate with just the username — no password needed.
 3. If a `guard_prompt` is received, prompt the user and retry the command with the guard code
+4. If the sidecar returns `AUTH_REQUIRED`, surface `RewindError::AuthRequired` so the frontend prompts re-login
 
 The sidecar uses SteamKit2's built-in session caching to minimize server calls within a single command invocation.
 
@@ -181,7 +182,9 @@ Errors are reported via:
 2. **JSON error messages** on stderr (if error during operation)
 3. **Exit code 1** (always)
 
-The `code` field contains a machine-readable error code (e.g., `INVALID_CREDENTIALS`, `ACCOUNT_DISABLED`, `DOWNLOAD_FAILED`). The `message` field is human-readable and includes details.
+The `code` field contains a machine-readable error code (e.g., `INVALID_CREDENTIALS`, `ACCOUNT_DISABLED`, `DOWNLOAD_FAILED`, `AUTH_REQUIRED`). The `message` field is human-readable and includes details.
+
+`AUTH_REQUIRED` is emitted when `--password` is omitted and no saved session exists (or the saved session has expired). The Rust backend translates this into `RewindError::AuthRequired` so the frontend can prompt re-login.
 
 Example:
 
