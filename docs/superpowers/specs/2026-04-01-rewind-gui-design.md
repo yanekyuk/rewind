@@ -121,7 +121,7 @@ Modal overlay with two steps:
 
 **Step 2 — Download & apply:**
 - Progress bar polling `Arc<Mutex<DownloadProgress>>`
-- Scrollable log area showing last N lines of DepotDownloader stdout/stderr
+- Scrollable log area showing last 100 lines of DepotDownloader stdout/stderr
 - "Cancel" sends a `CancellationToken` signal to the tokio task
 - On success: closes wizard, refreshes game detail panel, shows toast notification
 
