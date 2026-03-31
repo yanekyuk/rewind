@@ -86,7 +86,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     f.render_widget(log_list, layout[2]);
 
     // Help line
-    let help = Paragraph::new(" [O] open SteamDB in browser   [Esc] cancel ")
+    let help = Paragraph::new(" [O] open SteamDB in browser   [Esc] cancel   [Ctrl+C] quit ")
         .style(Style::default().fg(Color::DarkGray));
     f.render_widget(help, layout[3]);
 }

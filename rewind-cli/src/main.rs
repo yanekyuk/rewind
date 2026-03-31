@@ -150,7 +150,12 @@ async fn run(
     Ok(())
 }
 
-async fn handle_key(app: &mut App, key: KeyCode, _modifiers: KeyModifiers) {
+async fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
+    // Ctrl+C quits from any screen.
+    if modifiers.contains(KeyModifiers::CONTROL) && key == KeyCode::Char('c') {
+        app.should_quit = true;
+        return;
+    }
     match app.screen {
         Screen::FirstRun => handle_first_run(app, key),
         Screen::Main => handle_main(app, key),
