@@ -5,8 +5,10 @@ using SteamKit2.Authentication;
 namespace SteamKitSidecar;
 
 /// <summary>
-/// Manages a Steam client connection and authentication session.
-/// Handles login, Steam Guard 2FA, and session persistence.
+/// Manages a long-lived Steam client connection and authentication session.
+/// In daemon mode, a single SteamSession is created once and shared across
+/// all commands. The session handles login, Steam Guard 2FA, session
+/// persistence, and callback processing.
 /// </summary>
 public sealed class SteamSession : IDisposable
 {
@@ -43,6 +45,10 @@ public sealed class SteamSession : IDisposable
     /// <summary>
     /// Connect to Steam and authenticate with the given credentials.
     /// Handles Steam Guard 2FA via JSON prompt/response on stdin/stdout.
+    ///
+    /// In daemon mode, the caller should call <see cref="StartCallbackLoop"/>
+    /// after a successful login to keep callbacks running for subsequent commands.
+    /// The callback loop started internally during login is stopped before returning.
     /// </summary>
     public async Task<bool> LoginAsync(string username, string password, string? guardCode = null)
     {
@@ -50,7 +56,7 @@ public sealed class SteamSession : IDisposable
 
         _client.Connect();
 
-        // Run callbacks in background
+        // Run callbacks in background during login
         var cts = new CancellationTokenSource();
         var callbackTask = Task.Run(() =>
         {
@@ -140,17 +146,15 @@ public sealed class SteamSession : IDisposable
     }
 
     /// <summary>
-    /// Connect to Steam and start callback processing. Returns a CancellationTokenSource
-    /// that should be cancelled when done.
+    /// Start a long-running callback processing loop. Returns a CancellationTokenSource
+    /// that the caller should cancel when the session is no longer needed.
     ///
-    /// If password is null, only saved session authentication is attempted.
-    /// If no saved session exists (or it's expired), throws AuthRequiredException
-    /// so the caller can emit an AUTH_REQUIRED error code.
+    /// In daemon mode, this is called after successful login and runs for the
+    /// lifetime of the session. SteamKit2 requires continuous callback processing
+    /// to maintain the connection and handle events from the Steam network.
     /// </summary>
-    public async Task<CancellationTokenSource> ConnectAndLoginAsync(string username, string? password, string? guardCode = null)
+    public CancellationTokenSource StartCallbackLoop()
     {
-        _client.Connect();
-
         var cts = new CancellationTokenSource();
         _ = Task.Run(() =>
         {
@@ -159,102 +163,6 @@ public sealed class SteamSession : IDisposable
                 _manager.RunWaitCallbacks(TimeSpan.FromMilliseconds(100));
             }
         }, cts.Token);
-
-        // Wait for connection
-        var connected = await _connectTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        if (!connected)
-        {
-            cts.Cancel();
-            throw new Exception("Failed to connect to Steam");
-        }
-
-        JsonOutput.Info("Connected to Steam");
-
-        var sessionDir = GetSessionDir();
-        var sessionFile = Path.Combine(sessionDir, $"{username}.json");
-
-        // Try saved session first
-        var savedSession = LoadSession(sessionFile);
-        if (savedSession != null)
-        {
-            JsonOutput.Info("Using saved session...");
-            _loginTcs = new TaskCompletionSource<bool>();
-
-            _user.LogOn(new SteamUser.LogOnDetails
-            {
-                Username = username,
-                AccessToken = savedSession.RefreshToken,
-            });
-
-            var loggedIn = await _loginTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
-            if (loggedIn)
-            {
-                return cts;
-            }
-
-            // Saved session failed — delete it and reconnect
-            JsonOutput.Warn("Saved session expired, performing fresh login...");
-            try { File.Delete(sessionFile); } catch { }
-
-            // If no password available, we can't do fresh auth
-            if (string.IsNullOrEmpty(password))
-            {
-                cts.Cancel();
-                throw new AuthRequiredException("Saved session expired and no password provided for re-authentication");
-            }
-
-            // Wait for disconnect to fully process before reconnecting
-            _client.Disconnect();
-            await Task.Delay(1000);
-            _connectTcs = new TaskCompletionSource<bool>();
-            _client.Connect();
-            var reconnected = await _connectTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
-            if (!reconnected)
-            {
-                cts.Cancel();
-                throw new Exception("Failed to reconnect to Steam after session expiry");
-            }
-        }
-        else if (string.IsNullOrEmpty(password))
-        {
-            // No saved session and no password — cannot authenticate
-            cts.Cancel();
-            throw new AuthRequiredException("No saved session found and no password provided");
-        }
-
-        // Fresh credential auth
-        var authSession = await _client.Authentication.BeginAuthSessionViaCredentialsAsync(
-            new AuthSessionDetails
-            {
-                Username = username,
-                Password = password,
-                Authenticator = new JsonAuthenticator(guardCode),
-            }
-        );
-
-        var pollResult = await authSession.PollingWaitForResultAsync();
-
-        _loginTcs = new TaskCompletionSource<bool>();
-
-        _user.LogOn(new SteamUser.LogOnDetails
-        {
-            Username = pollResult.AccountName,
-            AccessToken = pollResult.RefreshToken,
-        });
-
-        var result = await _loginTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        if (!result)
-        {
-            cts.Cancel();
-            throw new Exception("Login failed");
-        }
-
-        SaveSession(sessionFile, new SavedSession
-        {
-            Username = pollResult.AccountName,
-            RefreshToken = pollResult.RefreshToken,
-        });
-
         return cts;
     }
 
