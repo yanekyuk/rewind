@@ -101,9 +101,10 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
 
 /// List available manifests for a depot using the SteamKit sidecar.
 ///
-/// Requires full credentials (username + password) from the current session.
-/// If only a saved username exists (no password), returns AuthRequired error
-/// so the frontend can prompt for re-login.
+/// Uses full credentials if available, or falls back to the saved username
+/// (with empty password) to let the sidecar attempt session-token auth.
+/// If the sidecar reports AUTH_REQUIRED (no saved session and no password),
+/// returns `RewindError::AuthRequired` so the frontend shows the login form.
 #[tauri::command]
 async fn list_manifests(
     app: tauri::AppHandle,
@@ -111,8 +112,8 @@ async fn list_manifests(
     app_id: String,
     depot_id: String,
 ) -> Result<Vec<ManifestListEntry>, RewindError> {
-    let credentials = state.get().ok_or_else(|| {
-        RewindError::AuthRequired("Session expired. Please sign in again.".to_string())
+    let credentials = state.get_or_saved().ok_or_else(|| {
+        RewindError::AuthRequired("No credentials available. Please sign in.".to_string())
     })?;
     eprintln!("[list_manifests] spawning sidecar for app={} depot={}", app_id, depot_id);
     let start = std::time::Instant::now();

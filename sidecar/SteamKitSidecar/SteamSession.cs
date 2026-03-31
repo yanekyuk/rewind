@@ -142,8 +142,12 @@ public sealed class SteamSession : IDisposable
     /// <summary>
     /// Connect to Steam and start callback processing. Returns a CancellationTokenSource
     /// that should be cancelled when done.
+    ///
+    /// If password is null, only saved session authentication is attempted.
+    /// If no saved session exists (or it's expired), throws AuthRequiredException
+    /// so the caller can emit an AUTH_REQUIRED error code.
     /// </summary>
-    public async Task<CancellationTokenSource> ConnectAndLoginAsync(string username, string password, string? guardCode = null)
+    public async Task<CancellationTokenSource> ConnectAndLoginAsync(string username, string? password, string? guardCode = null)
     {
         _client.Connect();
 
@@ -192,6 +196,13 @@ public sealed class SteamSession : IDisposable
             JsonOutput.Warn("Saved session expired, performing fresh login...");
             try { File.Delete(sessionFile); } catch { }
 
+            // If no password available, we can't do fresh auth
+            if (string.IsNullOrEmpty(password))
+            {
+                cts.Cancel();
+                throw new AuthRequiredException("Saved session expired and no password provided for re-authentication");
+            }
+
             // Wait for disconnect to fully process before reconnecting
             _client.Disconnect();
             await Task.Delay(1000);
@@ -203,6 +214,12 @@ public sealed class SteamSession : IDisposable
                 cts.Cancel();
                 throw new Exception("Failed to reconnect to Steam after session expiry");
             }
+        }
+        else if (string.IsNullOrEmpty(password))
+        {
+            // No saved session and no password — cannot authenticate
+            cts.Cancel();
+            throw new AuthRequiredException("No saved session found and no password provided");
         }
 
         // Fresh credential auth
@@ -377,4 +394,14 @@ internal class JsonAuthenticator : IAuthenticator
         // the phone approval; we don't need to block on stdin.
         return Task.FromResult(true);
     }
+}
+
+/// <summary>
+/// Thrown when the sidecar cannot authenticate because no saved session
+/// exists and no password was provided. Caught by command handlers to
+/// emit a structured AUTH_REQUIRED error code.
+/// </summary>
+public class AuthRequiredException : Exception
+{
+    public AuthRequiredException(string message) : base(message) { }
 }

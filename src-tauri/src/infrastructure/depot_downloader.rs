@@ -47,18 +47,8 @@ pub async fn login(
     app: &AppHandle,
     credentials: &Credentials,
 ) -> Result<(), RewindError> {
-    let mut args = vec![
-        "login".to_string(),
-        "--username".to_string(),
-        credentials.username.clone(),
-        "--password".to_string(),
-        credentials.password.clone(),
-    ];
-
-    if let Some(ref code) = credentials.guard_code {
-        args.push("--guard-code".to_string());
-        args.push(code.clone());
-    }
+    let mut args = vec!["login".to_string()];
+    args.extend(build_credential_args(credentials));
 
     let (mut rx, _child) =
         spawn_sidecar(app, args).map_err(|e| {
@@ -123,22 +113,14 @@ pub async fn list_manifests(
     depot_id: &str,
     credentials: &Credentials,
 ) -> Result<Vec<ManifestListEntry>, RewindError> {
-    let mut args = vec![
-        "list-manifests".to_string(),
-        "--username".to_string(),
-        credentials.username.clone(),
-        "--password".to_string(),
-        credentials.password.clone(),
+    let mut args = vec!["list-manifests".to_string()];
+    args.extend(build_credential_args(credentials));
+    args.extend([
         "--app".to_string(),
         app_id.to_string(),
         "--depot".to_string(),
         depot_id.to_string(),
-    ];
-
-    if let Some(ref code) = credentials.guard_code {
-        args.push("--guard-code".to_string());
-        args.push(code.clone());
-    }
+    ]);
 
     let (mut rx, _child) =
         spawn_sidecar(app, args).map_err(|e| {
@@ -166,6 +148,13 @@ pub async fn list_manifests(
             CommandEvent::Terminated(payload) => {
                 eprintln!("[sidecar] terminated with code {:?}", payload.code);
                 if payload.code != Some(0) {
+                    // Check for AUTH_REQUIRED — sidecar had no saved session
+                    // and no password was provided
+                    if is_auth_required_error(&stderr_buffer) {
+                        return Err(RewindError::AuthRequired(
+                            "Session expired. Please sign in again.".to_string(),
+                        ));
+                    }
                     let detail = if stderr_buffer.is_empty() {
                         format!(
                             "SteamKit sidecar exited with code {:?}",
@@ -206,24 +195,16 @@ pub async fn get_manifest(
     manifest_id: &str,
     credentials: &Credentials,
 ) -> Result<DepotManifest, RewindError> {
-    let mut args = vec![
-        "get-manifest".to_string(),
-        "--username".to_string(),
-        credentials.username.clone(),
-        "--password".to_string(),
-        credentials.password.clone(),
+    let mut args = vec!["get-manifest".to_string()];
+    args.extend(build_credential_args(credentials));
+    args.extend([
         "--app".to_string(),
         app_id.to_string(),
         "--depot".to_string(),
         depot_id.to_string(),
         "--manifest".to_string(),
         manifest_id.to_string(),
-    ];
-
-    if let Some(ref code) = credentials.guard_code {
-        args.push("--guard-code".to_string());
-        args.push(code.clone());
-    }
+    ]);
 
     let (mut rx, _child) = spawn_sidecar(app, args).map_err(|e| {
         RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
@@ -256,6 +237,11 @@ pub async fn get_manifest(
                     payload.code
                 );
                 if payload.code != Some(0) {
+                    if is_auth_required_error(&stderr_buffer) {
+                        return Err(RewindError::AuthRequired(
+                            "Session expired. Please sign in again.".to_string(),
+                        ));
+                    }
                     let detail = if stderr_buffer.is_empty() {
                         format!(
                             "SteamKit sidecar exited with code {:?}",
@@ -301,12 +287,9 @@ pub async fn download(
     filelist_path: &str,
     credentials: &Credentials,
 ) -> Result<(), RewindError> {
-    let mut args = vec![
-        "download".to_string(),
-        "--username".to_string(),
-        credentials.username.clone(),
-        "--password".to_string(),
-        credentials.password.clone(),
+    let mut args = vec!["download".to_string()];
+    args.extend(build_credential_args(credentials));
+    args.extend([
         "--app".to_string(),
         app_id.to_string(),
         "--depot".to_string(),
@@ -317,12 +300,7 @@ pub async fn download(
         output_dir.to_string(),
         "--filelist".to_string(),
         filelist_path.to_string(),
-    ];
-
-    if let Some(ref code) = credentials.guard_code {
-        args.push("--guard-code".to_string());
-        args.push(code.clone());
-    }
+    ]);
 
     let (mut rx, _child) = spawn_sidecar(app, args).map_err(|e| {
         RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
@@ -383,6 +361,11 @@ pub async fn download(
                     payload.code
                 );
                 if payload.code != Some(0) {
+                    if is_auth_required_error(&stderr_buffer) {
+                        return Err(RewindError::AuthRequired(
+                            "Session expired. Please sign in again.".to_string(),
+                        ));
+                    }
                     let detail = if stderr_buffer.is_empty() {
                         format!(
                             "SteamKit sidecar download exited with code {:?}",
@@ -400,4 +383,115 @@ pub async fn download(
     }
 
     Ok(())
+}
+
+/// Check whether a sidecar error indicates that authentication is required.
+///
+/// The sidecar emits `AUTH_REQUIRED` when it cannot authenticate because
+/// no saved session exists and no password was provided. This lets the Rust
+/// backend distinguish "need to re-login" from other sidecar failures.
+fn is_auth_required_error(stderr: &str) -> bool {
+    for line in stderr.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            if parsed.get("code").and_then(|v| v.as_str()) == Some("AUTH_REQUIRED") {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Build the credential CLI arguments for the sidecar.
+///
+/// Always includes `--username`. Only includes `--password` if the password
+/// is non-empty (i.e. full credentials are available). When password is empty,
+/// the sidecar will attempt to use a saved session token instead.
+fn build_credential_args(credentials: &Credentials) -> Vec<String> {
+    let mut args = vec![
+        "--username".to_string(),
+        credentials.username.clone(),
+    ];
+    if !credentials.password.is_empty() {
+        args.push("--password".to_string());
+        args.push(credentials.password.clone());
+    }
+    if let Some(ref code) = credentials.guard_code {
+        args.push("--guard-code".to_string());
+        args.push(code.clone());
+    }
+    args
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_sidecar_error_parses_json_message() {
+        let stderr = r#"{"type":"error","code":"AUTH_ERROR","message":"Authentication failed"}"#;
+        assert_eq!(extract_sidecar_error(stderr), "Authentication failed");
+    }
+
+    #[test]
+    fn extract_sidecar_error_falls_back_to_raw_text() {
+        let stderr = "some raw error";
+        assert_eq!(extract_sidecar_error(stderr), "some raw error");
+    }
+
+    #[test]
+    fn is_auth_required_error_detects_auth_required_code() {
+        let stderr = r#"{"type":"error","code":"AUTH_REQUIRED","message":"No saved session and no password provided"}"#;
+        assert!(is_auth_required_error(stderr));
+    }
+
+    #[test]
+    fn is_auth_required_error_ignores_other_codes() {
+        let stderr = r#"{"type":"error","code":"AUTH_ERROR","message":"Login failed"}"#;
+        assert!(!is_auth_required_error(stderr));
+    }
+
+    #[test]
+    fn is_auth_required_error_handles_empty_stderr() {
+        assert!(!is_auth_required_error(""));
+    }
+
+    #[test]
+    fn build_credential_args_includes_password_when_present() {
+        let creds = Credentials {
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            guard_code: None,
+        };
+        let args = build_credential_args(&creds);
+        assert_eq!(args, vec!["--username", "user", "--password", "pass"]);
+    }
+
+    #[test]
+    fn build_credential_args_omits_password_when_empty() {
+        let creds = Credentials {
+            username: "user".to_string(),
+            password: "".to_string(),
+            guard_code: None,
+        };
+        let args = build_credential_args(&creds);
+        assert_eq!(args, vec!["--username", "user"]);
+    }
+
+    #[test]
+    fn build_credential_args_includes_guard_code() {
+        let creds = Credentials {
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            guard_code: Some("ABC123".to_string()),
+        };
+        let args = build_credential_args(&creds);
+        assert_eq!(
+            args,
+            vec!["--username", "user", "--password", "pass", "--guard-code", "ABC123"]
+        );
+    }
 }

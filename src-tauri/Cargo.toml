@@ -1,6 +1,6 @@
 [package]
 name = "rewind"
-version = "0.11.0"
+version = "0.11.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -30,4 +30,3 @@ tokio = { version = "1", features = ["fs", "macros", "process", "rt-multi-thread
 
 [dev-dependencies]
 tempfile = "3"
-

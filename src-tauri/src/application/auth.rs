@@ -122,6 +122,32 @@ impl AuthStore {
             .and_then(|guard| guard.clone())
     }
 
+    /// Get credentials for sidecar calls, falling back to saved username.
+    ///
+    /// Returns full credentials if available, or constructs a `Credentials`
+    /// with an empty password if only a saved username exists. The empty
+    /// password signals the sidecar to attempt session-token authentication
+    /// instead of credential-based authentication.
+    ///
+    /// Returns `None` if neither credentials nor a saved username exist.
+    pub fn get_or_saved(&self) -> Option<Credentials> {
+        // Prefer full credentials (username + password set this session)
+        if let Some(creds) = self.get() {
+            return Some(creds);
+        }
+        // Fall back to saved username with empty password
+        let username = self
+            .saved_username
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())?;
+        Some(Credentials {
+            username,
+            password: String::new(),
+            guard_code: None,
+        })
+    }
+
     /// Clear stored credentials.
     pub fn clear(&self) {
         if let Ok(mut guard) = self.credentials.lock() {
@@ -216,5 +242,40 @@ mod tests {
         assert!(!store.is_set()); // No full credentials
         assert!(store.has_saved_session());
         assert_eq!(store.username(), Some("saveduser".to_string()));
+    }
+
+    // Hypothesis: The bug occurs because AuthStore has no way to return
+    // Credentials for a saved-session-only state (username known, no password).
+    // get_or_saved() should return Credentials with empty password when only
+    // a saved username exists, allowing the sidecar to attempt session reuse.
+
+    #[test]
+    fn get_or_saved_returns_full_credentials_when_set() {
+        let store = AuthStore::default();
+        let creds = Credentials {
+            username: "testuser".to_string(),
+            password: "testpass".to_string(),
+            guard_code: None,
+        };
+        store.set(creds).unwrap();
+        let result = store.get_or_saved().unwrap();
+        assert_eq!(result.username, "testuser");
+        assert_eq!(result.password, "testpass");
+    }
+
+    #[test]
+    fn get_or_saved_returns_saved_username_with_empty_password() {
+        let store = AuthStore::with_saved_username(Some("saveduser".to_string()));
+        assert!(!store.is_set()); // No full credentials
+        let result = store.get_or_saved().unwrap();
+        assert_eq!(result.username, "saveduser");
+        assert_eq!(result.password, ""); // empty — sidecar will try saved session
+        assert!(result.guard_code.is_none());
+    }
+
+    #[test]
+    fn get_or_saved_returns_none_when_no_credentials_or_saved_username() {
+        let store = AuthStore::default();
+        assert!(store.get_or_saved().is_none());
     }
 }
