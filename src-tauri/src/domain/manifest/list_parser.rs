@@ -54,15 +54,15 @@ mod tests {
     #[test]
     fn parse_envelope_format() {
         let output = r#"{"type":"log","level":"info","message":"Connected"}
-{"type":"manifest_list","manifests":[{"id":"123456","date":"public"},{"id":"789012","date":"beta"}]}
+{"type":"manifest_list","manifests":[{"id":"123456","branch":"public"},{"id":"789012","branch":"beta"}]}
 {"type":"done","success":true}"#;
 
         let entries = parse_manifest_list(output);
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].manifest_id, "123456");
-        assert_eq!(entries[0].date, "public");
+        assert_eq!(entries[0].branch, Some("public".to_string()));
         assert_eq!(entries[1].manifest_id, "789012");
-        assert_eq!(entries[1].date, "beta");
+        assert_eq!(entries[1].branch, Some("beta".to_string()));
     }
 
     #[test]
@@ -72,18 +72,19 @@ mod tests {
 
     #[test]
     fn parse_bare_entries() {
-        let output = r#"{"manifest_id":"111","date":"2026-01-01"}
-{"manifest_id":"222","date":"2026-02-01"}"#;
+        let output = r#"{"manifest_id":"111","branch":"public"}
+{"manifest_id":"222","branch":"beta"}"#;
         let entries = parse_manifest_list(output);
         assert_eq!(entries.len(), 2);
     }
 
     #[test]
     fn parse_id_alias() {
-        let output = r#"{"id":"999","date":"public"}"#;
+        let output = r#"{"id":"999","branch":"public"}"#;
         let entries = parse_manifest_list(output);
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].manifest_id, "999");
+        assert_eq!(entries[0].branch, Some("public".to_string()));
     }
 
     #[test]
@@ -98,5 +99,52 @@ not json at all"#;
     fn parse_empty_manifests_array() {
         let output = r#"{"type":"manifest_list","manifests":[]}"#;
         assert!(parse_manifest_list(output).is_empty());
+    }
+
+    #[test]
+    fn parse_branch_field() {
+        let output = r#"{"type":"manifest_list","manifests":[{"id":"123","branch":"public"},{"id":"456","branch":"beta"}]}"#;
+        let entries = parse_manifest_list(output);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].branch, Some("public".to_string()));
+        assert_eq!(entries[1].branch, Some("beta".to_string()));
+    }
+
+    #[test]
+    fn parse_time_updated_field() {
+        let output = r#"{"type":"manifest_list","manifests":[{"id":"123","branch":"public","time_updated":1711123305}]}"#;
+        let entries = parse_manifest_list(output);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].time_updated, Some(1711123305));
+    }
+
+    #[test]
+    fn parse_pwd_required_field() {
+        let output = r#"{"type":"manifest_list","manifests":[{"id":"123","branch":"beta","pwd_required":true}]}"#;
+        let entries = parse_manifest_list(output);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].pwd_required, Some(true));
+    }
+
+    #[test]
+    fn parse_all_new_fields_together() {
+        let output = r#"{"type":"manifest_list","manifests":[{"id":"789","branch":"bleeding-edge","time_updated":1711123305,"pwd_required":false}]}"#;
+        let entries = parse_manifest_list(output);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].manifest_id, "789");
+        assert_eq!(entries[0].branch, Some("bleeding-edge".to_string()));
+        assert_eq!(entries[0].time_updated, Some(1711123305));
+        assert_eq!(entries[0].pwd_required, Some(false));
+    }
+
+    #[test]
+    fn parse_missing_optional_fields() {
+        let output = r#"{"type":"manifest_list","manifests":[{"id":"999"}]}"#;
+        let entries = parse_manifest_list(output);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].manifest_id, "999");
+        assert_eq!(entries[0].branch, None);
+        assert_eq!(entries[0].time_updated, None);
+        assert_eq!(entries[0].pwd_required, None);
     }
 }
