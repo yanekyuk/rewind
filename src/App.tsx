@@ -6,12 +6,15 @@ import { GameLibrary } from "./components/GameLibrary";
 import { GameSidebar } from "./components/GameSidebar";
 import { GameDetail } from "./components/GameDetail";
 import { VersionSelect } from "./components/VersionSelect";
+import { DowngradeProgress } from "./components/DowngradeProgress";
+import { useDowngradeProgress } from "./hooks/useDowngradeProgress";
 import type { ViewId } from "./types/navigation";
 import type { GameInfo } from "./types/game";
 import "./App.css";
 
 function App() {
   const auth = useAuth();
+  const downgradeProgress = useDowngradeProgress();
   const { authenticated, signOut } = auth;
   const [currentView, setCurrentView] = useState<ViewId>("auth-gate");
   const [selectedGame, setSelectedGame] = useState<GameInfo | null>(null);
@@ -19,6 +22,10 @@ function App() {
     null,
   );
   const [selectedDepotId, setSelectedDepotId] = useState<string | null>(null);
+  const [downgradeContext, setDowngradeContext] = useState<{
+    game: GameInfo;
+    targetManifestId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (authenticated) {
@@ -40,10 +47,28 @@ function App() {
   const handleChangeVersion = useCallback((depotId: string) => {
     setSelectedManifestId(null);
     setSelectedDepotId(depotId);
+    setDowngradeContext(null);
     setCurrentView("version-select");
   }, []);
 
   const handleBackToDetail = useCallback(() => {
+    setSelectedManifestId(null);
+    setDowngradeContext(null);
+    setCurrentView("game-detail");
+  }, []);
+
+  const handleSelectManifest = useCallback(
+    (manifestId: string) => {
+      if (selectedGame) {
+        setDowngradeContext({ game: selectedGame, targetManifestId: manifestId });
+        setCurrentView("downgrade");
+      }
+    },
+    [selectedGame]
+  );
+
+  const handleDowngradeComplete = useCallback(() => {
+    setDowngradeContext(null);
     setSelectedManifestId(null);
     setCurrentView("game-detail");
   }, []);
@@ -52,23 +77,27 @@ function App() {
     await signOut();
     setSelectedGame(null);
     setSelectedManifestId(null);
+    setSelectedDepotId(null);
+    setDowngradeContext(null);
     setCurrentView("auth-gate");
   }, [signOut]);
 
-  const canGoBack = currentView !== "game-library" && currentView !== "auth-gate";
+  const canGoBack = currentView !== "game-library" && currentView !== "auth-gate" && currentView !== "downgrade";
   const handleBack = useCallback(() => {
     if (currentView === "version-select") {
       handleBackToDetail();
     } else if (currentView === "game-detail") {
       handleBackToLibrary();
+    } else if (currentView === "downgrade") {
+      handleDowngradeComplete();
     }
-  }, [currentView, handleBackToDetail, handleBackToLibrary]);
+  }, [currentView, handleBackToDetail, handleBackToLibrary, handleDowngradeComplete]);
 
   if (!authenticated || currentView === "auth-gate") {
     return <LoginView auth={auth} />;
   }
 
-  const inGameView = currentView === "game-detail" || currentView === "version-select";
+  const inGameView = currentView === "game-detail" || currentView === "version-select" || currentView === "downgrade";
 
   return (
     <AppShell
@@ -107,8 +136,17 @@ function App() {
                 game={selectedGame}
                 depotId={selectedDepotId}
                 selectedManifestId={selectedManifestId}
-                onSelectManifest={setSelectedManifestId}
+                onSelectManifest={handleSelectManifest}
                 onAuthRequired={handleSignOut}
+              />
+            )}
+
+            {downgradeContext && currentView === "downgrade" && (
+              <DowngradeProgress
+                game={downgradeContext.game}
+                targetManifestId={downgradeContext.targetManifestId}
+                progress={downgradeProgress}
+                onComplete={handleDowngradeComplete}
               />
             )}
           </div>

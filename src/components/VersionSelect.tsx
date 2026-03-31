@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useManifestList } from "../hooks/useManifestList";
+import { useStartDowngrade } from "../hooks/useStartDowngrade";
 import type { GameInfo } from "../types/game";
 import { Lock } from "lucide-react";
 
@@ -20,6 +21,13 @@ function formatTimestamp(timestamp: number): string {
   });
 }
 
+/** Derive the steamapps directory from a game's install_path (steamapps/common/<dir>). */
+function getSteamappsPath(installPath: string): string {
+  const idx = installPath.toLowerCase().indexOf("steamapps");
+  if (idx === -1) return installPath;
+  return installPath.slice(0, idx + "steamapps".length);
+}
+
 export function VersionSelect({
   game,
   depotId: depotIdProp,
@@ -30,6 +38,7 @@ export function VersionSelect({
   const { manifests, loading, error, fetch } = useManifestList(undefined, {
     onAuthRequired,
   });
+  const { starting: startingDowngrade, start: startDowngrade } = useStartDowngrade();
   const [manualId, setManualId] = useState("");
 
   // Use the provided depot ID, falling back to the first installed depot
@@ -49,12 +58,25 @@ export function VersionSelect({
     }
   };
 
-  const handleManualSubmit = () => {
+  const buildDowngradeParams = useCallback((targetManifestId: string) => ({
+    app_id: game.appid,
+    depot_id: depotId,
+    target_manifest_id: targetManifestId,
+    current_manifest_id: currentManifestId,
+    latest_buildid: game.buildid,
+    latest_manifest_id: installedDepot?.manifest ?? "",
+    latest_size: installedDepot?.size ?? "0",
+    install_path: game.install_path,
+    steamapps_path: getSteamappsPath(game.install_path),
+  }), [game, depotId, currentManifestId, installedDepot]);
+
+  const handleManualSubmit = useCallback(async () => {
     const trimmed = manualId.trim();
     if (trimmed) {
+      await startDowngrade(buildDowngradeParams(trimmed));
       onSelectManifest(trimmed);
     }
-  };
+  }, [manualId, buildDowngradeParams, onSelectManifest, startDowngrade]);
 
   return (
     <div className="version-select">
@@ -114,12 +136,18 @@ export function VersionSelect({
                 .filter(Boolean)
                 .join(" ");
 
+              const handleRowClick = async () => {
+                await startDowngrade(buildDowngradeParams(entry.manifest_id));
+                onSelectManifest(entry.manifest_id);
+              };
+
               return (
                 <button
                   key={entry.manifest_id}
                   className={classes}
-                  onClick={() => onSelectManifest(entry.manifest_id)}
+                  onClick={handleRowClick}
                   type="button"
+                  disabled={startingDowngrade}
                 >
                   <div className="version-row__info">
                     <span className="version-row__branch">
