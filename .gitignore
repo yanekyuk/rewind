@@ -9,6 +9,9 @@ Cargo.lock
 .DS_Store
 Thumbs.db
 
+# Git worktrees
+.worktrees/
+
 # Editor
 .idea/
 .vscode/
