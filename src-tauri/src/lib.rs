@@ -149,7 +149,9 @@ async fn set_credentials(
     eprintln!("[set_credentials] authentication successful");
 
     save_username(&credentials.username);
-    save_to_keychain(&credentials.username, &credentials.password);
+    if !credentials.password.is_empty() {
+        save_to_keychain(&credentials.username, &credentials.password);
+    }
     state
         .set(credentials)
         .map_err(|e| RewindError::AuthFailed(e.to_string()))?;
