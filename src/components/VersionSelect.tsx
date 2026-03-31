@@ -5,6 +5,7 @@ import { Lock } from "lucide-react";
 
 interface VersionSelectProps {
   game: GameInfo;
+  depotId: string | null;
   selectedManifestId: string | null;
   onSelectManifest: (manifestId: string) => void;
   onAuthRequired?: () => void;
@@ -21,6 +22,7 @@ function formatTimestamp(timestamp: number): string {
 
 export function VersionSelect({
   game,
+  depotId: depotIdProp,
   selectedManifestId,
   onSelectManifest,
   onAuthRequired,
@@ -30,9 +32,10 @@ export function VersionSelect({
   });
   const [manualId, setManualId] = useState("");
 
-  const depot = game.depots[0];
-  const depotId = depot?.depot_id ?? "";
-  const currentManifestId = depot?.manifest ?? "Unknown";
+  // Use the provided depot ID, falling back to the first installed depot
+  const depotId = depotIdProp ?? game.depots[0]?.depot_id ?? "";
+  const installedDepot = game.depots.find((d) => d.depot_id === depotId);
+  const currentManifestId = installedDepot?.manifest ?? "Unknown";
 
   useEffect(() => {
     if (depotId) {
