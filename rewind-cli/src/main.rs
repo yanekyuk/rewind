@@ -159,7 +159,7 @@ async fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
     match app.screen {
         Screen::FirstRun => handle_first_run(app, key),
         Screen::Main => handle_main(app, key),
-        Screen::DowngradeWizard => handle_wizard(app, key).await,
+        Screen::DowngradeWizard => handle_wizard(app, key),
         Screen::VersionPicker => handle_version_picker(app, key),
         Screen::Settings => handle_settings(app, key),
     }
@@ -245,7 +245,7 @@ fn handle_main(app: &mut App, key: KeyCode) {
     }
 }
 
-async fn handle_wizard(app: &mut App, key: KeyCode) {
+fn handle_wizard(app: &mut App, key: KeyCode) {
     match key {
         KeyCode::Esc => {
             app.screen = Screen::Main;
@@ -267,7 +267,7 @@ async fn handle_wizard(app: &mut App, key: KeyCode) {
         }
         KeyCode::Enter if !app.wizard_state.is_downloading => {
             if !app.wizard_state.manifest_input.trim().is_empty() {
-                start_download(app).await;
+                start_download(app);
             }
         }
         _ => {}
@@ -364,7 +364,7 @@ fn handle_settings(app: &mut App, key: KeyCode) {
     }
 }
 
-async fn start_download(app: &mut App) {
+fn start_download(app: &mut App) {
     if app.config.steam_username.is_none() {
         app.wizard_state.error = Some("Steam username not set. Go to [S]ettings.".into());
         return;
@@ -372,24 +372,30 @@ async fn start_download(app: &mut App) {
 
     let Ok(bin_dir) = config::bin_dir() else { return };
 
-    // Check .NET runtime is available
-    if !rewind_core::depot::check_dotnet().await {
-        app.wizard_state.error = Some(
-            "Error: .NET runtime not found.\nPlease install from https://dotnet.microsoft.com/download".into(),
-        );
-        return;
-    }
-
     let (tx, rx) = mpsc::channel(10);
     app.progress_rx = Some(rx);
     app.wizard_state.is_downloading = true;
     app.wizard_state.progress_lines.clear();
     app.wizard_state.error = None;
 
-    // Background task: locate/download the DepotDownloader binary.
-    // Once ready, signal the main loop via ReadyToDownload so it can suspend the TUI
-    // and run the download interactively (required for password / Steam Guard prompts).
+    // All async work (dotnet check + binary download) runs in a background task so the
+    // main event loop is never blocked and the TUI stays responsive.
     tokio::spawn(async move {
+        let _ = tx
+            .send(rewind_core::depot::DepotProgress::Line(
+                "Checking .NET runtime...".into(),
+            ))
+            .await;
+        if !rewind_core::depot::check_dotnet().await {
+            let _ = tx
+                .send(rewind_core::depot::DepotProgress::Error(
+                    ".NET runtime not found. Install from https://dotnet.microsoft.com/download"
+                        .into(),
+                ))
+                .await;
+            return;
+        }
+
         let _ = tx
             .send(rewind_core::depot::DepotProgress::Line(
                 "Locating DepotDownloader...".into(),
@@ -399,7 +405,7 @@ async fn start_download(app: &mut App) {
             Ok(binary) => {
                 let _ = tx
                     .send(rewind_core::depot::DepotProgress::Line(
-                        "DepotDownloader ready. Starting download...".into(),
+                        "Ready. Starting download...".into(),
                     ))
                     .await;
                 let _ = tx
