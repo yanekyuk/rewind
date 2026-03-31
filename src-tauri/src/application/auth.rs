@@ -1,11 +1,15 @@
-//! In-memory credential store for the application session.
+//! Credential store for the application session.
 //!
-//! Only the username is persisted to disk. The sidecar manages its own
-//! session token. If the session expires, the user is prompted to re-login.
+//! The username is persisted to a plaintext file on disk. The password is
+//! stored in the OS keychain via the `keyring` crate. On startup, both are
+//! loaded to restore the previous session without requiring re-authentication.
+//! The sidecar manages its own session token separately.
 
 use std::sync::Mutex;
 
 use crate::domain::auth::Credentials;
+
+const KEYRING_SERVICE: &str = "rewind";
 
 fn username_file() -> Option<std::path::PathBuf> {
     dirs::config_dir().map(|d| d.join("rewind").join("username"))
@@ -48,6 +52,66 @@ pub fn clear_saved_username() {
     eprintln!("[auth] cleared saved username");
 }
 
+/// Save the password to the OS keychain.
+///
+/// Uses the `keyring` crate for cross-platform keychain access:
+/// - Linux: libsecret / kwallet
+/// - macOS: Keychain
+/// - Windows: Credential Manager (DPAPI)
+///
+/// Fails silently with a log message if the keychain is unavailable.
+pub fn save_to_keychain(username: &str, password: &str) {
+    match keyring::Entry::new(KEYRING_SERVICE, username) {
+        Ok(entry) => match entry.set_password(password) {
+            Ok(_) => eprintln!("[auth] saved password to OS keychain for {}", username),
+            Err(e) => eprintln!("[auth] failed to save password to keychain: {}", e),
+        },
+        Err(e) => eprintln!("[auth] failed to create keyring entry: {}", e),
+    }
+}
+
+/// Load the password from the OS keychain for the given username.
+///
+/// Returns `None` if the keychain is unavailable or no entry exists.
+pub fn load_from_keychain(username: &str) -> Option<String> {
+    match keyring::Entry::new(KEYRING_SERVICE, username) {
+        Ok(entry) => match entry.get_password() {
+            Ok(password) => {
+                eprintln!("[auth] loaded password from OS keychain for {}", username);
+                Some(password)
+            }
+            Err(keyring::Error::NoEntry) => {
+                eprintln!("[auth] no keychain entry found for {}", username);
+                None
+            }
+            Err(e) => {
+                eprintln!("[auth] failed to load password from keychain: {}", e);
+                None
+            }
+        },
+        Err(e) => {
+            eprintln!("[auth] failed to create keyring entry for load: {}", e);
+            None
+        }
+    }
+}
+
+/// Delete the password from the OS keychain for the given username.
+///
+/// Fails silently if the keychain is unavailable or no entry exists.
+pub fn delete_from_keychain(username: &str) {
+    match keyring::Entry::new(KEYRING_SERVICE, username) {
+        Ok(entry) => match entry.delete_credential() {
+            Ok(_) => eprintln!("[auth] deleted password from OS keychain for {}", username),
+            Err(keyring::Error::NoEntry) => {
+                eprintln!("[auth] no keychain entry to delete for {}", username);
+            }
+            Err(e) => eprintln!("[auth] failed to delete keychain entry: {}", e),
+        },
+        Err(e) => eprintln!("[auth] failed to create keyring entry for delete: {}", e),
+    }
+}
+
 /// Thread-safe, in-memory credential store.
 ///
 /// Managed as Tauri application state. The `Mutex` ensures safe concurrent
@@ -57,6 +121,8 @@ pub struct AuthStore {
     credentials: Mutex<Option<Credentials>>,
     /// Stored username from a previous session (no password).
     saved_username: Mutex<Option<String>>,
+    /// Whether the store has a password (from keychain or current session).
+    stored_password: Mutex<bool>,
 }
 
 impl AuthStore {
@@ -65,6 +131,37 @@ impl AuthStore {
         Self {
             credentials: Mutex::new(None),
             saved_username: Mutex::new(username),
+            stored_password: Mutex::new(false),
+        }
+    }
+
+    /// Create an AuthStore pre-loaded with credentials from the OS keychain.
+    ///
+    /// If both username and password are available, creates full `Credentials`
+    /// so that `get_or_saved()` returns usable credentials with a real password
+    /// instead of the empty-password fallback.
+    pub fn with_saved_credentials(
+        username: Option<String>,
+        password: Option<String>,
+    ) -> Self {
+        match (&username, &password) {
+            (Some(u), Some(p)) => {
+                let creds = Credentials {
+                    username: u.clone(),
+                    password: p.clone(),
+                    guard_code: None,
+                };
+                Self {
+                    credentials: Mutex::new(Some(creds)),
+                    saved_username: Mutex::new(username),
+                    stored_password: Mutex::new(true),
+                }
+            }
+            _ => Self {
+                credentials: Mutex::new(None),
+                saved_username: Mutex::new(username),
+                stored_password: Mutex::new(false),
+            },
         }
     }
 
@@ -78,6 +175,10 @@ impl AuthStore {
         // Also update saved username
         if let Ok(mut uguard) = self.saved_username.lock() {
             *uguard = Some(credentials.username.clone());
+        }
+        // Mark that we have a stored password
+        if let Ok(mut pguard) = self.stored_password.lock() {
+            *pguard = true;
         }
         *guard = Some(credentials);
         Ok(())
@@ -97,6 +198,19 @@ impl AuthStore {
             .lock()
             .ok()
             .map(|guard| guard.is_some())
+            .unwrap_or(false)
+    }
+
+    /// Check whether a password is available (from keychain or current session).
+    ///
+    /// This is used by the frontend to distinguish between:
+    /// - Full credentials available (show "Welcome back" UI)
+    /// - Username-only saved session (show login form)
+    pub fn has_stored_password(&self) -> bool {
+        self.stored_password
+            .lock()
+            .ok()
+            .map(|guard| *guard)
             .unwrap_or(false)
     }
 
@@ -155,6 +269,9 @@ impl AuthStore {
         }
         if let Ok(mut guard) = self.saved_username.lock() {
             *guard = None;
+        }
+        if let Ok(mut guard) = self.stored_password.lock() {
+            *guard = false;
         }
     }
 }
@@ -244,11 +361,6 @@ mod tests {
         assert_eq!(store.username(), Some("saveduser".to_string()));
     }
 
-    // Hypothesis: The bug occurs because AuthStore has no way to return
-    // Credentials for a saved-session-only state (username known, no password).
-    // get_or_saved() should return Credentials with empty password when only
-    // a saved username exists, allowing the sidecar to attempt session reuse.
-
     #[test]
     fn get_or_saved_returns_full_credentials_when_set() {
         let store = AuthStore::default();
@@ -277,5 +389,81 @@ mod tests {
     fn get_or_saved_returns_none_when_no_credentials_or_saved_username() {
         let store = AuthStore::default();
         assert!(store.get_or_saved().is_none());
+    }
+
+    #[test]
+    fn with_saved_password_populates_full_credentials() {
+        let store = AuthStore::with_saved_credentials(
+            Some("saveduser".to_string()),
+            Some("savedpass".to_string()),
+        );
+        // Should have full credentials pre-loaded
+        assert!(store.is_set());
+        let creds = store.get().unwrap();
+        assert_eq!(creds.username, "saveduser");
+        assert_eq!(creds.password, "savedpass");
+        assert!(creds.guard_code.is_none());
+    }
+
+    #[test]
+    fn with_saved_password_but_no_username_has_no_credentials() {
+        let store = AuthStore::with_saved_credentials(None, Some("savedpass".to_string()));
+        assert!(!store.is_set());
+        assert!(store.get().is_none());
+    }
+
+    #[test]
+    fn with_saved_username_only_falls_back_to_empty_password() {
+        let store =
+            AuthStore::with_saved_credentials(Some("saveduser".to_string()), None);
+        assert!(!store.is_set()); // No full credentials
+        assert!(store.has_saved_session());
+        let result = store.get_or_saved().unwrap();
+        assert_eq!(result.username, "saveduser");
+        assert_eq!(result.password, ""); // Falls back to empty password
+    }
+
+    #[test]
+    fn has_stored_password_true_when_keychain_credentials_loaded() {
+        let store = AuthStore::with_saved_credentials(
+            Some("saveduser".to_string()),
+            Some("savedpass".to_string()),
+        );
+        assert!(store.has_stored_password());
+    }
+
+    #[test]
+    fn has_stored_password_false_when_only_username() {
+        let store = AuthStore::with_saved_username(Some("saveduser".to_string()));
+        assert!(!store.has_stored_password());
+    }
+
+    #[test]
+    fn has_stored_password_false_after_clear() {
+        let store = AuthStore::with_saved_credentials(
+            Some("saveduser".to_string()),
+            Some("savedpass".to_string()),
+        );
+        assert!(store.has_stored_password());
+        store.clear();
+        assert!(!store.has_stored_password());
+    }
+
+    #[test]
+    fn has_stored_password_true_after_set_credentials() {
+        let store = AuthStore::default();
+        assert!(!store.has_stored_password());
+        let creds = Credentials {
+            username: "user".to_string(),
+            password: "pass".to_string(),
+            guard_code: None,
+        };
+        store.set(creds).unwrap();
+        // has_stored_password tracks keychain-sourced credentials specifically,
+        // not in-session credentials. After set(), stored_password flag should
+        // reflect that this session has credentials but they weren't from keychain.
+        // However, the flag is also set to true when set() is called because
+        // the password will be saved to keychain by the caller.
+        assert!(store.has_stored_password());
     }
 }
