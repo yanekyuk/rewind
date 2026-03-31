@@ -1,6 +1,43 @@
 use crate::app::App;
-use ratatui::Frame;
+use ratatui::{
+    Frame,
+    layout::{Alignment, Margin, Rect},
+    style::{Color, Style},
+    widgets::{Block, BorderType, Borders, Clear, Paragraph, Wrap},
+};
 
 pub fn draw(f: &mut Frame, _app: &App) {
-    let _ = f;
+    let area = centered_rect(60, 14, f.area());
+    f.render_widget(Clear, area);
+
+    let block = Block::default()
+        .title(" Welcome to rewind ")
+        .title_alignment(Alignment::Center)
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(Color::Cyan));
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let text = "rewind manages your Steam game versions.\n\n\
+        It uses DepotDownloader to fetch previous versions\n\
+        and switches between them instantly via symlinks.\n\n\
+        Press [Enter] to configure your Steam libraries.\n\
+        Press [Q] to quit.";
+
+    let paragraph = Paragraph::new(text)
+        .alignment(Alignment::Center)
+        .wrap(Wrap { trim: true })
+        .style(Style::default().fg(Color::White));
+
+    f.render_widget(paragraph, inner.inner(Margin { horizontal: 1, vertical: 1 }));
+}
+
+fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+    let x = area.x + area.width.saturating_sub(width) / 2;
+    let y = area.y + area.height.saturating_sub(height) / 2;
+    let w = width.min(area.width);
+    let h = height.min(area.height);
+    Rect::new(x, y, w, h)
 }
