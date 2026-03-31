@@ -33,15 +33,23 @@ pub enum DepotProgress {
 /// Returns the platform-specific DepotDownloader zip asset name.
 pub fn platform_asset_name() -> &'static str {
     #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    { "DepotDownloader-windows-x64.zip" }
+    return "DepotDownloader-windows-x64.zip";
     #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    { "DepotDownloader-linux-x64.zip" }
+    return "DepotDownloader-linux-x64.zip";
     #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    { "DepotDownloader-linux-arm64.zip" }
+    return "DepotDownloader-linux-arm64.zip";
     #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    { "DepotDownloader-macos-x64.zip" }
+    return "DepotDownloader-macos-x64.zip";
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    { "DepotDownloader-macos-arm64.zip" }
+    return "DepotDownloader-macos-arm64.zip";
+    #[cfg(not(any(
+        all(target_os = "windows", target_arch = "x86_64"),
+        all(target_os = "linux", target_arch = "x86_64"),
+        all(target_os = "linux", target_arch = "aarch64"),
+        all(target_os = "macos", target_arch = "x86_64"),
+        all(target_os = "macos", target_arch = "aarch64"),
+    )))]
+    compile_error!("Unsupported platform: no DepotDownloader asset available for this OS/arch combination.");
 }
 
 /// Build the argument list for a DepotDownloader invocation.
@@ -221,6 +229,7 @@ mod tests {
         let name = platform_asset_name();
         assert!(!name.is_empty());
         assert!(name.ends_with(".zip"));
+        assert!(name.starts_with("DepotDownloader-"));
     }
 
     #[test]

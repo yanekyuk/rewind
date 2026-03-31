@@ -122,11 +122,13 @@ pub fn list_cached_manifests(cache_root: &Path, app_id: u32, depot_id: u32) -> V
 
     std::fs::read_dir(&depot_dir)
         .map(|entries| {
-            entries
+            let mut manifests: Vec<String> = entries
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().is_dir())
                 .filter_map(|e| e.file_name().into_string().ok())
-                .collect()
+                .collect();
+            manifests.sort();
+            manifests
         })
         .unwrap_or_default()
 }

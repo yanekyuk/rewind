@@ -26,6 +26,20 @@ async fn run(
 ) -> anyhow::Result<()> {
     let mut app = App::new(cfg, games_cfg);
 
+    // Auto-detect Steam libraries on first run
+    if app.config.libraries.is_empty() {
+        if let Ok(lib_paths) = rewind_core::scanner::find_steam_libraries() {
+            for path in lib_paths {
+                if !app.config.libraries.iter().any(|l| l.path == path) {
+                    app.config.libraries.push(rewind_core::config::Library { path });
+                }
+            }
+            if !app.config.libraries.is_empty() {
+                let _ = config::save_config(&app.config);
+            }
+        }
+    }
+
     // Scan libraries on startup
     for lib in &app.config.libraries.clone() {
         let steamapps = lib.path.join("steamapps");
@@ -142,10 +156,14 @@ fn handle_main(app: &mut App, key: KeyCode) {
                 if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == aid) {
                     let acf = entry.acf_path();
                     if entry.acf_locked {
-                        let _ = rewind_core::immutability::unlock_file(&acf);
+                        if let Err(e) = rewind_core::immutability::unlock_file(&acf) {
+                            eprintln!("Warning: failed to unlock ACF: {}", e);
+                        }
                         entry.acf_locked = false;
                     } else {
-                        let _ = rewind_core::immutability::lock_file(&acf);
+                        if let Err(e) = rewind_core::immutability::lock_file(&acf) {
+                            eprintln!("Warning: failed to lock ACF: {}", e);
+                        }
                         entry.acf_locked = true;
                     }
                     let _ = config::save_games(&app.games_config);
@@ -301,6 +319,14 @@ async fn start_download(app: &mut App, manifest_id: String) {
     let Ok(bin_dir) = config::bin_dir() else { return };
     let Ok(cache_root) = config::cache_dir() else { return };
 
+    // Check .NET runtime is available
+    if !rewind_core::depot::check_dotnet().await {
+        app.wizard_state.error = Some(
+            "Error: .NET runtime not found.\nPlease install from https://dotnet.microsoft.com/download".into(),
+        );
+        return;
+    }
+
     let (tx, rx) = mpsc::channel(100);
     app.progress_rx = Some(rx);
     app.wizard_state.is_downloading = true;
@@ -364,13 +390,17 @@ fn switch_to_cached_version(app: &mut App, manifest_id: String) {
     {
         entry.active_manifest_id = manifest_id.clone();
         // buildid "0" is a safe placeholder: ACF is locked so Steam can't update.
-        let _ = rewind_core::patcher::patch_acf_file(
+        if let Err(e) = rewind_core::patcher::patch_acf_file(
             &entry.acf_path(),
             "0",
             &manifest_id,
             entry.depot_id,
-        );
-        let _ = rewind_core::immutability::lock_file(&entry.acf_path());
+        ) {
+            eprintln!("Warning: failed to patch ACF: {}", e);
+        }
+        if let Err(e) = rewind_core::immutability::lock_file(&entry.acf_path()) {
+            eprintln!("Warning: failed to lock ACF: {}", e);
+        }
         entry.acf_locked = true;
     }
 
@@ -404,12 +434,7 @@ fn finalize_downgrade(app: &mut App) {
         return;
     }
 
-    let acf_path = game
-        .install_path
-        .parent()
-        .and_then(|p| p.parent())
-        .map(|p| p.join(format!("appmanifest_{}.acf", game.app_id)))
-        .unwrap_or_else(|| game.install_path.join(format!("appmanifest_{}.acf", game.app_id)));
+    let acf_path = game.acf_path.clone();
 
     let existing = app
         .games_config

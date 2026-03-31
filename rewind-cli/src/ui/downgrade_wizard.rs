@@ -1,13 +1,13 @@
 use crate::app::App;
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Margin, Rect},
+    layout::{Alignment, Constraint, Direction, Layout, Margin},
     style::{Color, Modifier, Style},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph},
 };
 
 pub fn draw(f: &mut Frame, app: &App) {
-    let area = centered_rect(70, 75, f.area());
+    let area = crate::ui::centered_rect(70, 75, f.area());
     f.render_widget(Clear, area);
 
     let block = Block::default()
@@ -91,22 +91,3 @@ pub fn draw(f: &mut Frame, app: &App) {
     f.render_widget(help, layout[3]);
 }
 
-fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
-    let popup_layout = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Percentage((100 - percent_y) / 2),
-            Constraint::Percentage(percent_y),
-            Constraint::Percentage((100 - percent_y) / 2),
-        ])
-        .split(area);
-
-    Layout::default()
-        .direction(Direction::Horizontal)
-        .constraints([
-            Constraint::Percentage((100 - percent_x) / 2),
-            Constraint::Percentage(percent_x),
-            Constraint::Percentage((100 - percent_x) / 2),
-        ])
-        .split(popup_layout[1])[1]
-}
