@@ -103,7 +103,51 @@ Go to the [Releases](https://github.com/yanekyuk/rewind/releases) page and downl
 | macOS (Intel) | `rewind-x86_64-macos.tar.gz` |
 | Linux (64-bit) | `rewind-x86_64-linux.tar.gz` |
 
-Extract the archive and place the `rewind` binary somewhere on your PATH.
+`rewind` is a terminal application — it always needs to be launched from a terminal window. It cannot be opened by double-clicking.
+
+**Windows**
+
+1. Extract the `.zip` — you'll get `rewind.exe`
+2. Move `rewind.exe` to a folder of your choice, e.g. `C:\Users\you\rewind\`
+3. Open that folder in File Explorer, then right-click inside it and choose **Open in Terminal** (or **Open PowerShell window here**)
+4. Type `.\rewind.exe` and press Enter
+
+To run `rewind` from any terminal without navigating to its folder first:
+1. Open **Start**, search for **"Edit the system environment variables"**
+2. Click **Environment Variables** → under **User variables**, select **Path** → **Edit**
+3. Click **New** and paste the full path to the folder containing `rewind.exe`
+4. Click OK, restart your terminal
+
+**macOS**
+
+1. Extract the `.tar.gz` — you'll get a `rewind` binary
+2. Open **Terminal** (find it in Spotlight with `Cmd+Space`, type "Terminal")
+3. Drag the `rewind` file into the Terminal window — this pastes its full path
+4. Press Enter to run it
+
+On first launch, macOS may block it as an unrecognized app. If that happens:
+- Open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**
+
+To run `rewind` from any terminal by just typing `rewind`:
+```sh
+sudo mv rewind /usr/local/bin/rewind
+chmod +x /usr/local/bin/rewind
+```
+
+**Linux**
+
+1. Extract the `.tar.gz` — you'll get a `rewind` binary
+2. Open a terminal in the folder where you extracted it
+3. Make it executable and run it:
+```sh
+chmod +x ./rewind
+./rewind
+```
+
+To run `rewind` from any terminal by just typing `rewind`:
+```sh
+sudo mv rewind /usr/local/bin/rewind
+```
 
 ## Step 3 — Platform Notes
 
