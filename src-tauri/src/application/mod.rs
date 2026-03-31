@@ -22,3 +22,4 @@
 //! - Error aggregation and user-facing error construction
 
 pub mod auth;
+pub mod downgrade;
