@@ -1,12 +1,22 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useManifestList } from "../hooks/useManifestList";
 import type { GameInfo } from "../types/game";
+import { Lock } from "lucide-react";
 
 interface VersionSelectProps {
   game: GameInfo;
   selectedManifestId: string | null;
   onSelectManifest: (manifestId: string) => void;
   onAuthRequired?: () => void;
+}
+
+function formatTimestamp(timestamp: number): string {
+  const date = new Date(timestamp * 1000);
+  return date.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
 }
 
 export function VersionSelect({
@@ -18,6 +28,7 @@ export function VersionSelect({
   const { manifests, loading, error, fetch } = useManifestList(undefined, {
     onAuthRequired,
   });
+  const [manualId, setManualId] = useState("");
 
   const depot = game.depots[0];
   const depotId = depot?.depot_id ?? "";
@@ -32,6 +43,13 @@ export function VersionSelect({
   const handleRetry = () => {
     if (depotId) {
       fetch(game.appid, depotId);
+    }
+  };
+
+  const handleManualSubmit = () => {
+    const trimmed = manualId.trim();
+    if (trimmed) {
+      onSelectManifest(trimmed);
     }
   };
 
@@ -82,19 +100,76 @@ export function VersionSelect({
 
         {!loading && !error && manifests.length > 0 && (
           <div className="version-select__list">
-            {manifests.map((entry) => (
-              <button
-                key={entry.manifest_id}
-                className={`version-row${selectedManifestId === entry.manifest_id ? " version-row--selected" : ""}`}
-                onClick={() => onSelectManifest(entry.manifest_id)}
-                type="button"
-              >
-                <span className="version-row__date">{entry.date}</span>
-                <span className="version-row__id">{entry.manifest_id}</span>
-              </button>
-            ))}
+            {manifests.map((entry) => {
+              const isCurrent = entry.manifest_id === currentManifestId;
+              const isSelected = selectedManifestId === entry.manifest_id;
+              const classes = [
+                "version-row",
+                isSelected ? "version-row--selected" : "",
+                isCurrent ? "version-row--current" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+
+              return (
+                <button
+                  key={entry.manifest_id}
+                  className={classes}
+                  onClick={() => onSelectManifest(entry.manifest_id)}
+                  type="button"
+                >
+                  <div className="version-row__info">
+                    <span className="version-row__branch">
+                      {entry.branch ?? "unknown"}
+                      {isCurrent && (
+                        <span className="version-row__current-badge">
+                          current
+                        </span>
+                      )}
+                      {entry.pwd_required && (
+                        <span className="version-row__pwd">
+                          <Lock size={12} />
+                          <span>Password required</span>
+                        </span>
+                      )}
+                    </span>
+                    {entry.time_updated != null && (
+                      <span className="version-row__time">
+                        {formatTimestamp(entry.time_updated)}
+                      </span>
+                    )}
+                  </div>
+                  <span className="version-row__id">{entry.manifest_id}</span>
+                </button>
+              );
+            })}
           </div>
         )}
+
+        <div className="version-select__manual">
+          <h2 className="version-select__section-title">Manual Entry</h2>
+          <p className="version-select__manual-hint">
+            Enter a manifest ID directly if you know it from SteamDB or a
+            community guide.
+          </p>
+          <div className="version-select__manual-row">
+            <input
+              className="version-select__manual-input"
+              type="text"
+              placeholder="Enter manifest ID"
+              value={manualId}
+              onChange={(e) => setManualId(e.target.value)}
+            />
+            <button
+              className="version-select__manual-button"
+              type="button"
+              onClick={handleManualSubmit}
+              disabled={!manualId.trim()}
+            >
+              Use
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -23,8 +23,8 @@ const mockGame: GameInfo = {
 };
 
 const mockManifests = [
-  { manifest_id: "7446650175280810671", date: "2026-03-22 16:01:45" },
-  { manifest_id: "7446500175280810670", date: "2026-03-15 14:30:20" },
+  { manifest_id: "7446650175280810671", branch: "public", time_updated: 1774387305, pwd_required: false },
+  { manifest_id: "7446500175280810670", branch: "beta", time_updated: 1773782220, pwd_required: true },
 ];
 
 describe("VersionSelect", () => {
@@ -45,7 +45,6 @@ describe("VersionSelect", () => {
         game={mockGame}
         selectedManifestId={null}
         onSelectManifest={mock()}
-        onBack={mock()}
       />,
     );
     // Current build ID
@@ -67,7 +66,6 @@ describe("VersionSelect", () => {
         game={mockGame}
         selectedManifestId={null}
         onSelectManifest={mock()}
-        onBack={mock()}
       />,
     );
     expect(screen.getByText(/loading/i)).toBeInTheDocument();
@@ -87,7 +85,6 @@ describe("VersionSelect", () => {
         game={mockGame}
         selectedManifestId={null}
         onSelectManifest={mock()}
-        onBack={mock()}
       />,
     );
     expect(screen.getByText(/auth required/i)).toBeInTheDocument();
@@ -96,7 +93,7 @@ describe("VersionSelect", () => {
     expect(fetchFn).toHaveBeenCalled();
   });
 
-  it("renders available versions with manifest ID and date", () => {
+  it("renders available versions with branch name and manifest ID", () => {
     mockUseManifestList.mockReturnValue({
       manifests: mockManifests,
       loading: false,
@@ -109,12 +106,11 @@ describe("VersionSelect", () => {
         game={mockGame}
         selectedManifestId={null}
         onSelectManifest={mock()}
-        onBack={mock()}
       />,
     );
-    expect(screen.getByText("2026-03-22 16:01:45")).toBeInTheDocument();
+    expect(screen.getByText("public")).toBeInTheDocument();
     expect(screen.getByText("7446650175280810671")).toBeInTheDocument();
-    expect(screen.getByText("2026-03-15 14:30:20")).toBeInTheDocument();
+    expect(screen.getByText("beta")).toBeInTheDocument();
     expect(screen.getByText("7446500175280810670")).toBeInTheDocument();
   });
 
@@ -132,11 +128,10 @@ describe("VersionSelect", () => {
         game={mockGame}
         selectedManifestId={null}
         onSelectManifest={onSelectManifest}
-        onBack={mock()}
       />,
     );
 
-    fireEvent.click(screen.getByText("2026-03-22 16:01:45"));
+    fireEvent.click(screen.getByText("public"));
     expect(onSelectManifest).toHaveBeenCalledWith("7446650175280810671");
   });
 
@@ -153,7 +148,6 @@ describe("VersionSelect", () => {
         game={mockGame}
         selectedManifestId="7446650175280810671"
         onSelectManifest={mock()}
-        onBack={mock()}
       />,
     );
 
@@ -161,7 +155,31 @@ describe("VersionSelect", () => {
     expect(selectedRows.length).toBe(1);
   });
 
-  it("calls onBack when back button is clicked", () => {
+  it("highlights the currently installed manifest", () => {
+    const manifestsWithCurrent = [
+      { manifest_id: "744665017", branch: "public", time_updated: 1774387305 },
+      { manifest_id: "7446500175280810670", branch: "beta", time_updated: 1773782220 },
+    ];
+    mockUseManifestList.mockReturnValue({
+      manifests: manifestsWithCurrent,
+      loading: false,
+      error: null,
+      fetch: mock(),
+    });
+
+    const { container } = render(
+      <VersionSelect
+        game={mockGame}
+        selectedManifestId={null}
+        onSelectManifest={mock()}
+      />,
+    );
+
+    const currentRows = container.querySelectorAll(".version-row--current");
+    expect(currentRows.length).toBe(1);
+  });
+
+  it("shows password required indicator for locked branches", () => {
     mockUseManifestList.mockReturnValue({
       manifests: mockManifests,
       loading: false,
@@ -169,17 +187,58 @@ describe("VersionSelect", () => {
       fetch: mock(),
     });
 
-    const onBack = mock();
     render(
       <VersionSelect
         game={mockGame}
         selectedManifestId={null}
         onSelectManifest={mock()}
-        onBack={onBack}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /back/i }));
-    expect(onBack).toHaveBeenCalledTimes(1);
+    // The beta branch has pwd_required: true
+    expect(screen.getByText(/password required/i)).toBeInTheDocument();
+  });
+
+  it("provides manual manifest ID input field", () => {
+    mockUseManifestList.mockReturnValue({
+      manifests: mockManifests,
+      loading: false,
+      error: null,
+      fetch: mock(),
+    });
+
+    render(
+      <VersionSelect
+        game={mockGame}
+        selectedManifestId={null}
+        onSelectManifest={mock()}
+      />,
+    );
+
+    const input = screen.getByPlaceholderText(/manifest id/i);
+    expect(input).toBeInTheDocument();
+  });
+
+  it("calls onSelectManifest when manual manifest ID is submitted", () => {
+    mockUseManifestList.mockReturnValue({
+      manifests: mockManifests,
+      loading: false,
+      error: null,
+      fetch: mock(),
+    });
+
+    const onSelectManifest = mock();
+    render(
+      <VersionSelect
+        game={mockGame}
+        selectedManifestId={null}
+        onSelectManifest={onSelectManifest}
+      />,
+    );
+
+    const input = screen.getByPlaceholderText(/manifest id/i);
+    fireEvent.change(input, { target: { value: "9999999999" } });
+    fireEvent.click(screen.getByRole("button", { name: /use/i }));
+    expect(onSelectManifest).toHaveBeenCalledWith("9999999999");
   });
 });
