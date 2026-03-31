@@ -23,6 +23,8 @@ export interface UseAuthResult {
     password: string,
     guardCode?: string,
   ) => Promise<void>;
+  /** Resume a session using credentials already stored in the backend (from keychain). */
+  resumeSession: () => Promise<void>;
   /** Clear credentials from memory and the OS keychain. */
   signOut: () => Promise<void>;
 }
@@ -90,6 +92,20 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
     [invoke],
   );
 
+  const resumeSession = useCallback(async () => {
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      await invoke("resume_session");
+      setAuthenticated(true);
+    } catch (err) {
+      setError(extractErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [invoke]);
+
   const signOut = useCallback(async () => {
     await invoke("clear_credentials");
     setUsername(null);
@@ -97,5 +113,5 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
     setAuthenticated(false);
   }, [invoke]);
 
-  return { checking, authenticated, username, hasStoredCredentials, submitting, error, submit, signOut };
+  return { checking, authenticated, username, hasStoredCredentials, submitting, error, submit, resumeSession, signOut };
 }

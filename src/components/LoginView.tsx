@@ -8,7 +8,7 @@ interface LoginViewProps {
 }
 
 export function LoginView({ auth }: LoginViewProps) {
-  const { checking, submitting, error, submit, username, hasStoredCredentials, signOut } = auth;
+  const { checking, submitting, error, submit, resumeSession, username, hasStoredCredentials, signOut } = auth;
   const [formUsername, setFormUsername] = useState("");
   const [formPassword, setFormPassword] = useState("");
   const [showFullForm, setShowFullForm] = useState(false);
@@ -68,9 +68,9 @@ export function LoginView({ auth }: LoginViewProps) {
   if (hasStoredCredentials && username && !showFullForm) {
     const handleResumeSession = (e: FormEvent) => {
       e.preventDefault();
-      // Submit with stored credentials — the backend already has them loaded
-      // from the keychain. Pass empty password to signal session reuse via sidecar.
-      submit(username, "", undefined);
+      // Resume using credentials already stored in the backend AuthStore
+      // (loaded from OS keychain at startup). No password crosses the IPC boundary.
+      resumeSession();
     };
 
     const handleSignInAsDifferent = () => {

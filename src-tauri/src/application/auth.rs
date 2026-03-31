@@ -438,6 +438,50 @@ mod tests {
         assert!(!store.has_stored_password());
     }
 
+    // Bug hypothesis: set_credentials constructs Credentials from IPC args (empty
+    // password) and attempts state.set(), which calls validate(). validate() rejects
+    // empty passwords — the real password in AuthStore from keychain is never used.
+    // The fix: a dedicated resume_session flow that reads credentials from AuthStore
+    // directly via get(), bypassing the IPC password argument entirely.
+    #[test]
+    fn resume_session_uses_keychain_credentials_directly() {
+        let store = AuthStore::with_saved_credentials(
+            Some("saveduser".to_string()),
+            Some("savedpass".to_string()),
+        );
+
+        // Simulate the resume_session flow: read credentials from store
+        let creds = store.get().expect("keychain credentials should be available");
+        assert_eq!(creds.username, "saveduser");
+        assert_eq!(creds.password, "savedpass");
+
+        // Verify that these credentials pass validation (unlike empty-password ones)
+        assert!(creds.validate().is_ok());
+    }
+
+    #[test]
+    fn set_rejects_empty_password_from_welcome_back_flow() {
+        let store = AuthStore::with_saved_credentials(
+            Some("saveduser".to_string()),
+            Some("savedpass".to_string()),
+        );
+
+        // Simulate the old buggy "Welcome back" flow: set_credentials with empty password
+        let empty_creds = Credentials {
+            username: "saveduser".to_string(),
+            password: "".to_string(),
+            guard_code: None,
+        };
+
+        // This should fail validation — the bug scenario
+        let result = store.set(empty_creds);
+        assert!(result.is_err(), "set() should reject empty password credentials");
+
+        // Original keychain credentials should still be intact
+        let creds = store.get().expect("original credentials should be preserved");
+        assert_eq!(creds.password, "savedpass");
+    }
+
     #[test]
     fn has_stored_password_false_after_clear() {
         let store = AuthStore::with_saved_credentials(

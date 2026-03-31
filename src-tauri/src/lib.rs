@@ -158,6 +158,33 @@ async fn set_credentials(
     Ok(())
 }
 
+/// Resume a session using credentials already stored in the AuthStore.
+///
+/// Used by the "Welcome back" flow when the frontend detects stored credentials.
+/// Instead of passing an empty password across the IPC boundary (which would fail
+/// validation and not work when the sidecar session expires), this command reads
+/// the real password from the AuthStore (loaded from the OS keychain at startup)
+/// and uses it to authenticate with the sidecar.
+///
+/// If the sidecar session token is still valid, this succeeds immediately.
+/// If the session expired, the stored password is used for re-authentication,
+/// avoiding the need for the user to re-enter their password.
+#[tauri::command]
+async fn resume_session(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AuthStore>,
+) -> Result<(), RewindError> {
+    let credentials = state.get().ok_or_else(|| {
+        RewindError::AuthRequired("No stored credentials available. Please sign in.".to_string())
+    })?;
+
+    eprintln!("[resume_session] authenticating with stored credentials...");
+    depot_downloader::login(&app, &credentials).await?;
+    eprintln!("[resume_session] authentication successful");
+
+    Ok(())
+}
+
 /// Check whether the user has an active or saved session.
 ///
 /// Returns `true` if credentials are available this session OR if a
@@ -333,6 +360,7 @@ pub fn run() {
             list_manifests,
             start_downgrade,
             set_credentials,
+            resume_session,
             get_auth_state,
             get_username,
             has_credentials,
