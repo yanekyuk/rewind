@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { GameInfo } from "../types/game";
+
+type InvokeFn = typeof tauriInvoke;
 
 interface UseGameListResult {
   games: GameInfo[];
@@ -9,7 +11,7 @@ interface UseGameListResult {
   retry: () => void;
 }
 
-export function useGameList(): UseGameListResult {
+export function useGameList(invoke: InvokeFn = tauriInvoke): UseGameListResult {
   const [games, setGames] = useState<GameInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function useGameList(): UseGameListResult {
     return () => {
       cancelled = true;
     };
-  }, [fetchKey]);
+  }, [fetchKey, invoke]);
 
   return { games, loading, error, retry };
 }

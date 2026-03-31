@@ -2,9 +2,13 @@
 title: "App Shell"
 type: spec
 tags: [frontend, ui, shell, navigation, steps, theme]
+status: superseded
+superseded-by: steam-ui-overhaul.md
 created: 2026-03-30
-updated: 2026-03-30
+updated: 2026-03-31
 ---
+
+> **Superseded:** This spec describes the original step-wizard layout. It has been replaced by the Steam UI Overhaul spec (`docs/specs/steam-ui-overhaul.md`), which introduces view-based navigation.
 
 # App Shell
 

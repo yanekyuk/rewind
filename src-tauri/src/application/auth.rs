@@ -1,66 +1,84 @@
-//! In-memory credential store for the application session, with optional
-//! OS keychain persistence via the `keyring` crate.
+//! In-memory credential store for the application session.
+//!
+//! Only the username is persisted to disk. The sidecar manages its own
+//! session token. If the session expires, the user is prompted to re-login.
 
 use std::sync::Mutex;
 
 use crate::domain::auth::Credentials;
 
-const KEYCHAIN_SERVICE: &str = "rewind";
-const KEYCHAIN_ACCOUNT: &str = "steam-credentials";
+fn username_file() -> Option<std::path::PathBuf> {
+    dirs::config_dir().map(|d| d.join("rewind").join("username"))
+}
 
-/// Persist credentials to the OS keychain (macOS Keychain, Windows Credential
-/// Manager, Linux libsecret). Stores a JSON payload so a single entry holds
-/// both username and password.
-///
-/// Silently ignores errors so keychain unavailability never blocks the app.
-pub fn save_to_keychain(credentials: &Credentials) {
-    if let Ok(payload) = serde_json::to_string(credentials) {
-        if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
-            let _ = entry.set_password(&payload);
+/// Save the username to disk so the app can restore the session on restart.
+pub fn save_username(username: &str) {
+    if let Some(path) = username_file() {
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::write(&path, username) {
+            Ok(_) => eprintln!("[auth] saved username to {}", path.display()),
+            Err(e) => eprintln!("[auth] failed to save username: {}", e),
         }
     }
 }
 
-/// Load credentials from the OS keychain, if any were previously saved.
-pub fn load_from_keychain() -> Option<Credentials> {
-    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).ok()?;
-    let payload = entry.get_password().ok()?;
-    serde_json::from_str(&payload).ok()
+/// Load the saved username, if any.
+pub fn load_username() -> Option<String> {
+    let path = username_file()?;
+    match std::fs::read_to_string(&path) {
+        Ok(u) if !u.trim().is_empty() => {
+            let username = u.trim().to_string();
+            eprintln!("[auth] loaded saved username: {}", username);
+            Some(username)
+        }
+        _ => {
+            eprintln!("[auth] no saved username found");
+            None
+        }
+    }
 }
 
-/// Remove saved credentials from the OS keychain.
-pub fn clear_from_keychain() {
-    if let Ok(entry) = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT) {
-        let _ = entry.delete_credential();
+/// Remove saved username from disk.
+pub fn clear_saved_username() {
+    if let Some(path) = username_file() {
+        let _ = std::fs::remove_file(&path);
     }
+    eprintln!("[auth] cleared saved username");
 }
 
 /// Thread-safe, in-memory credential store.
 ///
 /// Managed as Tauri application state. The `Mutex` ensures safe concurrent
 /// access from multiple IPC command handlers.
-///
-/// # Lifecycle
-///
-/// - Created empty when the app starts (via `Default`)
-/// - Populated when the user submits credentials via `set_credentials`
-/// - Read when spawning the SteamKit sidecar
-/// - Dropped when the app exits (credentials are never persisted)
 #[derive(Default)]
 pub struct AuthStore {
     credentials: Mutex<Option<Credentials>>,
+    /// Stored username from a previous session (no password).
+    saved_username: Mutex<Option<String>>,
 }
 
 impl AuthStore {
+    /// Create an AuthStore, optionally pre-loaded with a saved username.
+    pub fn with_saved_username(username: Option<String>) -> Self {
+        Self {
+            credentials: Mutex::new(None),
+            saved_username: Mutex::new(username),
+        }
+    }
+
     /// Store credentials after validation.
-    ///
-    /// Replaces any previously stored credentials.
     pub fn set(&self, credentials: Credentials) -> Result<(), &'static str> {
         credentials.validate()?;
         let mut guard = self
             .credentials
             .lock()
             .map_err(|_| "Failed to acquire credential lock")?;
+        // Also update saved username
+        if let Ok(mut uguard) = self.saved_username.lock() {
+            *uguard = Some(credentials.username.clone());
+        }
         *guard = Some(credentials);
         Ok(())
     }
@@ -73,7 +91,7 @@ impl AuthStore {
             .and_then(|guard| guard.clone())
     }
 
-    /// Check whether credentials have been stored.
+    /// Check whether credentials have been stored (full auth this session).
     pub fn is_set(&self) -> bool {
         self.credentials
             .lock()
@@ -82,9 +100,34 @@ impl AuthStore {
             .unwrap_or(false)
     }
 
+    /// Check whether there's a saved username from a previous session.
+    pub fn has_saved_session(&self) -> bool {
+        self.saved_username
+            .lock()
+            .ok()
+            .map(|guard| guard.is_some())
+            .unwrap_or(false)
+    }
+
+    /// Get the saved or active username.
+    pub fn username(&self) -> Option<String> {
+        // Prefer active credentials
+        if let Some(creds) = self.get() {
+            return Some(creds.username);
+        }
+        // Fall back to saved username
+        self.saved_username
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone())
+    }
+
     /// Clear stored credentials.
     pub fn clear(&self) {
         if let Ok(mut guard) = self.credentials.lock() {
+            *guard = None;
+        }
+        if let Ok(mut guard) = self.saved_username.lock() {
             *guard = None;
         }
     }
@@ -165,5 +208,13 @@ mod tests {
         store.clear();
         assert!(!store.is_set());
         assert!(store.get().is_none());
+    }
+
+    #[test]
+    fn saved_username_session() {
+        let store = AuthStore::with_saved_username(Some("saveduser".to_string()));
+        assert!(!store.is_set()); // No full credentials
+        assert!(store.has_saved_session());
+        assert_eq!(store.username(), Some("saveduser".to_string()));
     }
 }

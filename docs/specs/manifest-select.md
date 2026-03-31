@@ -2,9 +2,13 @@
 title: "Manifest Select"
 type: spec
 tags: [manifest, version-select, steamkit, auth, ui]
+status: superseded
+superseded-by: steam-ui-overhaul.md
 created: 2026-03-30
 updated: 2026-03-31
 ---
+
+> **Superseded (frontend section):** The ManifestSelect component and step-based version selection described below have been replaced by the VersionSelect component in the Steam UI Overhaul (`docs/specs/steam-ui-overhaul.md`). The backend `list_manifests` IPC command and domain types remain unchanged.
 
 ## Behavior
 

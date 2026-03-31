@@ -3,6 +3,22 @@ use std::path::Path;
 
 use super::vdf::AppState;
 
+fn format_bytes(bytes: u64) -> String {
+    const GB: u64 = 1_073_741_824;
+    const MB: u64 = 1_048_576;
+    const KB: u64 = 1_024;
+
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.0} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 /// Information about a single installed depot, suitable for frontend display.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DepotInfo {
@@ -24,6 +40,12 @@ pub struct GameInfo {
     pub installdir: String,
     pub depots: Vec<DepotInfo>,
     pub install_path: String,
+    pub state_flags: u32,
+    pub update_pending: bool,
+    pub target_build_id: Option<String>,
+    pub bytes_to_download: Option<String>,
+    pub size_on_disk: String,
+    pub last_updated: Option<String>,
 }
 
 impl GameInfo {
@@ -49,6 +71,27 @@ impl GameInfo {
         // Sort by depot_id for deterministic output
         depots.sort_by(|a, b| a.depot_id.cmp(&b.depot_id));
 
+        let state_flags: u32 = app_state.state_flags.parse().unwrap_or(0);
+        let update_pending = app_state
+            .target_build_id
+            .as_ref()
+            .map_or(false, |t| t != &app_state.buildid)
+            || app_state
+                .bytes_to_download
+                .as_ref()
+                .map_or(false, |b| b != "0");
+
+        let size_on_disk: u64 = app_state
+            .size_on_disk
+            .as_ref()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or_else(|| {
+                depots.iter().filter_map(|d| d.size.parse::<u64>().ok()).sum()
+            });
+
+        // Pass raw epoch timestamp — frontend will format it
+        let last_updated = app_state.last_updated.clone();
+
         GameInfo {
             appid: app_state.appid.clone(),
             name: app_state.name.clone(),
@@ -56,6 +99,12 @@ impl GameInfo {
             installdir: app_state.installdir.clone(),
             depots,
             install_path,
+            state_flags,
+            update_pending,
+            target_build_id: app_state.target_build_id.clone(),
+            bytes_to_download: app_state.bytes_to_download.clone(),
+            size_on_disk: format_bytes(size_on_disk),
+            last_updated,
         }
     }
 }
@@ -85,6 +134,9 @@ mod tests {
             target_build_id: None,
             bytes_to_download: None,
             full_validate_after_next_update: None,
+            last_updated: Some("1765887799".to_string()),
+            last_played: Some("1765994178".to_string()),
+            size_on_disk: Some("133575233011".to_string()),
         }
     }
 
@@ -106,6 +158,10 @@ mod tests {
         assert_eq!(game.depots[0].depot_id, "3321461");
         assert_eq!(game.depots[0].manifest, "7446650175280810671");
         assert_eq!(game.depots[0].size, "133575233011");
+        assert_eq!(game.state_flags, 4);
+        assert!(!game.update_pending);
+        assert!(game.target_build_id.is_none());
+        assert_eq!(game.size_on_disk, "124.4 GB");
     }
 
     #[test]

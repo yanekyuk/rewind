@@ -13,6 +13,9 @@ pub struct AppState {
     pub target_build_id: Option<String>,
     pub bytes_to_download: Option<String>,
     pub full_validate_after_next_update: Option<String>,
+    pub last_updated: Option<String>,
+    pub last_played: Option<String>,
+    pub size_on_disk: Option<String>,
 }
 
 /// Parameters for patching an ACF manifest to prevent Steam from detecting
@@ -38,9 +41,6 @@ pub struct InstalledDepot {
 
 impl AppState {
     /// Extract an AppState from a parsed VDF document.
-    ///
-    /// The document must have root key "AppState" with a map value containing
-    /// the required fields.
     pub fn from_vdf(doc: &VdfDocument) -> Result<Self, VdfError> {
         if doc.key != "AppState" {
             return Err(VdfError::InvalidField {
@@ -69,6 +69,9 @@ impl AppState {
         let bytes_to_download = map_get_str(map, "BytesToDownload").map(|s| s.to_string());
         let full_validate_after_next_update =
             map_get_str(map, "FullValidateAfterNextUpdate").map(|s| s.to_string());
+        let last_updated = map_get_str(map, "LastUpdated").map(|s| s.to_string());
+        let last_played = map_get_str(map, "LastPlayed").map(|s| s.to_string());
+        let size_on_disk = map_get_str(map, "SizeOnDisk").map(|s| s.to_string());
 
         let installed_depots = parse_installed_depots(map)?;
 
@@ -82,18 +85,13 @@ impl AppState {
             target_build_id,
             bytes_to_download,
             full_validate_after_next_update,
+            last_updated,
+            last_played,
+            size_on_disk,
         })
     }
 
     /// Patch this AppState for a downgrade operation.
-    ///
-    /// Per the downgrade process rules (docs/domain/downgrade-process.md):
-    /// - Set `buildid` and depot `manifest`/`size` to the **latest** values
-    ///   (not the target version) so Steam thinks the game is up to date.
-    /// - Set `StateFlags` to `4` (fully installed).
-    /// - Set `TargetBuildID` to `0` (no pending update).
-    /// - Set `BytesToDownload` to `0` (no pending download).
-    /// - Set `FullValidateAfterNextUpdate` to `0` (prevent validation).
     pub fn patch_for_downgrade(&mut self, params: &AcfPatchParams) {
         self.buildid = params.latest_buildid.clone();
         self.state_flags = "4".to_string();
@@ -132,9 +130,20 @@ impl AppState {
             ));
         }
 
+        if let Some(ref ts) = self.last_updated {
+            map.push(("LastUpdated".into(), VdfValue::String(ts.clone())));
+        }
+
+        if let Some(ref ts) = self.last_played {
+            map.push(("LastPlayed".into(), VdfValue::String(ts.clone())));
+        }
+
+        if let Some(ref size) = self.size_on_disk {
+            map.push(("SizeOnDisk".into(), VdfValue::String(size.clone())));
+        }
+
         // Build InstalledDepots map
         let mut depots: VdfMap = Vec::new();
-        // Sort depot IDs for deterministic output
         let mut depot_ids: Vec<&String> = self.installed_depots.keys().collect();
         depot_ids.sort();
         for depot_id in depot_ids {
@@ -154,20 +163,18 @@ impl AppState {
     }
 }
 
-/// Get a required string field from a VdfMap, returning MissingField error if absent.
 fn require_str(map: &VdfMap, key: &str) -> Result<String, VdfError> {
     map_get_str(map, key)
         .map(|s| s.to_string())
         .ok_or_else(|| VdfError::MissingField(key.into()))
 }
 
-/// Parse the InstalledDepots section from an AppState map.
 fn parse_installed_depots(map: &VdfMap) -> Result<HashMap<String, InstalledDepot>, VdfError> {
     let mut result = HashMap::new();
 
     let depots_map = match map_get_map(map, "InstalledDepots") {
         Some(m) => m,
-        None => return Ok(result), // InstalledDepots is optional (could be empty)
+        None => return Ok(result),
     };
 
     for (depot_id, depot_value) in depots_map {
@@ -218,6 +225,9 @@ mod tests {
             target_build_id: None,
             bytes_to_download: None,
             full_validate_after_next_update: None,
+            last_updated: Some("1765887799".to_string()),
+            last_played: Some("1765994178".to_string()),
+            size_on_disk: Some("133575233011".to_string()),
         }
     }
 
@@ -256,7 +266,7 @@ mod tests {
     #[test]
     fn patch_for_downgrade_sets_state_flags_to_4() {
         let mut app = make_app_state();
-        app.state_flags = "1".to_string(); // simulate non-installed state
+        app.state_flags = "1".to_string();
 
         let params = AcfPatchParams {
             latest_buildid: "99999999".to_string(),
@@ -298,15 +308,13 @@ mod tests {
             latest_buildid: "99999999".to_string(),
             latest_manifest: "8888888888888888888".to_string(),
             latest_size: "200000000000".to_string(),
-            depot_id: "9999999".to_string(), // non-existent depot
+            depot_id: "9999999".to_string(),
         };
 
         app.patch_for_downgrade(&params);
 
-        // buildid and flags should still be patched
         assert_eq!(app.buildid, "99999999");
         assert_eq!(app.state_flags, "4");
-        // original depot should be unchanged
         let depot = app.installed_depots.get("3321461").unwrap();
         assert_eq!(depot.manifest, "7446650175280810671");
     }

@@ -1,11 +1,15 @@
 import { useState, useEffect, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 
-interface UseAuthResult {
+type InvokeFn = typeof tauriInvoke;
+
+export interface UseAuthResult {
   /** Whether we are checking existing auth state on mount. */
   checking: boolean;
   /** Whether credentials have been successfully stored. */
   authenticated: boolean;
+  /** The Steam username of the authenticated user. */
+  username: string | null;
   /** Whether a submission is in progress. */
   submitting: boolean;
   /** Error message from the last failed submission, if any. */
@@ -20,9 +24,10 @@ interface UseAuthResult {
   signOut: () => Promise<void>;
 }
 
-export function useAuth(): UseAuthResult {
+export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
+  const [username, setUsername] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -31,9 +36,13 @@ export function useAuth(): UseAuthResult {
     let cancelled = false;
 
     invoke<boolean>("get_auth_state")
-      .then((isSet) => {
+      .then(async (isSet) => {
         if (!cancelled) {
           setAuthenticated(isSet);
+          if (isSet) {
+            const name = await invoke<string | null>("get_username");
+            if (!cancelled) setUsername(name);
+          }
           setChecking(false);
         }
       })
@@ -46,7 +55,7 @@ export function useAuth(): UseAuthResult {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [invoke]);
 
   const submit = useCallback(
     async (username: string, password: string, guardCode?: string) => {
@@ -59,6 +68,7 @@ export function useAuth(): UseAuthResult {
           password,
           guardCode: guardCode ?? null,
         });
+        setUsername(username);
         setAuthenticated(true);
       } catch (err) {
         const message =
@@ -74,13 +84,14 @@ export function useAuth(): UseAuthResult {
         setSubmitting(false);
       }
     },
-    [],
+    [invoke],
   );
 
   const signOut = useCallback(async () => {
     await invoke("clear_credentials");
+    setUsername(null);
     setAuthenticated(false);
-  }, []);
+  }, [invoke]);
 
-  return { checking, authenticated, submitting, error, submit, signOut };
+  return { checking, authenticated, username, submitting, error, submit, signOut };
 }

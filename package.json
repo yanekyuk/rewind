@@ -1,20 +1,24 @@
 {
   "name": "rewind",
   "private": true,
-  "version": "0.10.0",
+  "version": "0.11.0",
   "type": "module",
   "scripts": {
     "ensure-sidecar": "bash scripts/build-sidecar.sh",
     "dev": "bun run ensure-sidecar && vite",
     "build": "bun run ensure-sidecar && tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "bun test src/hooks/ src/types/ && bun test src/components/ src/App.test.tsx",
+    "test:hooks": "bun test src/hooks/ src/types/",
+    "test:components": "bun test src/components/ src/App.test.tsx"
   },
   "dependencies": {
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0",
     "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-opener": "^2",
+    "lucide-react": "^1.7.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",
@@ -25,7 +29,6 @@
     "@vitejs/plugin-react": "^4.6.0",
     "jsdom": "^29.0.1",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4",
-    "vitest": "^4.1.2"
+    "vite": "^7.0.4"
   }
 }

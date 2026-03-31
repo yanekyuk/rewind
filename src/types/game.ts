@@ -18,4 +18,10 @@ export interface GameInfo {
   installdir: string;
   depots: DepotInfo[];
   install_path: string;
+  state_flags: number;
+  update_pending: boolean;
+  target_build_id: string | null;
+  bytes_to_download: string | null;
+  size_on_disk: string;
+  last_updated: string | null;
 }
