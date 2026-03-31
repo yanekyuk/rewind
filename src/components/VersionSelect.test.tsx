@@ -11,6 +11,9 @@ mock.module("../hooks/useManifestList", () => ({
 mock.module("@tauri-apps/api/core", () => ({
   invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
+mock.module("@tauri-apps/api/event", () => ({
+  listen: mock(() => Promise.resolve(() => {})),
+}));
 
 const { VersionSelect } = await import("./VersionSelect");
 

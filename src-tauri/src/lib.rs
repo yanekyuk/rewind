@@ -6,6 +6,8 @@ pub mod infrastructure;
 use std::path::Path;
 
 use tauri::Emitter;
+use tauri::Manager;
+use tauri::webview::WebviewWindowBuilder;
 
 use application::auth::{
     clear_saved_username, delete_from_keychain, load_from_keychain, load_username, save_to_keychain,
@@ -356,6 +358,119 @@ async fn list_depots(
     result
 }
 
+/// JavaScript injected into the SteamDB webview to extract manifest data.
+///
+/// The script looks for the manifest history table on the SteamDB depot page,
+/// extracts manifest IDs, dates, and branch labels from each row, and emits
+/// the results back to the main window via the `steamdb-manifests` Tauri event.
+const STEAMDB_EXTRACTION_JS: &str = r#"
+(function() {
+  try {
+    // Wait for the table to be fully loaded
+    function extractManifests() {
+      const rows = document.querySelectorAll('.table .app-history .depot-manifest, table.table tbody tr');
+      const manifests = [];
+
+      // Try the standard SteamDB depot manifests table format
+      const table = document.querySelector('.table-responsive table, table.table');
+      if (table) {
+        const trs = table.querySelectorAll('tbody tr');
+        for (const tr of trs) {
+          const cells = tr.querySelectorAll('td');
+          if (cells.length >= 2) {
+            const manifestId = cells[0]?.textContent?.trim();
+            const date = cells[1]?.textContent?.trim() || null;
+            const branch = cells.length >= 3 ? cells[2]?.textContent?.trim() || null : null;
+
+            if (manifestId && /^\d+$/.test(manifestId)) {
+              manifests.push({
+                manifest_id: manifestId,
+                date: date,
+                branch: branch
+              });
+            }
+          }
+        }
+      }
+
+      if (manifests.length > 0) {
+        window.__TAURI__?.event?.emit('steamdb-manifests', manifests)
+          .catch(function(e) { console.error('Failed to emit manifests:', e); });
+      }
+    }
+
+    // Try extracting immediately, then retry after a delay for dynamic content
+    extractManifests();
+    setTimeout(extractManifests, 2000);
+    setTimeout(extractManifests, 5000);
+  } catch (e) {
+    console.error('SteamDB extraction error:', e);
+    window.__TAURI__?.event?.emit('steamdb-manifests-error', e.message || 'Extraction failed')
+      .catch(function() {});
+  }
+})();
+"#;
+
+/// Open a SteamDB webview window showing the manifest history for a depot.
+///
+/// Creates a new browser-like window pointing to
+/// `https://steamdb.info/depot/<depotId>/manifests/`. On page load, JavaScript
+/// is injected to extract the manifest table data. Extracted manifests are
+/// emitted on the `steamdb-manifests` event channel.
+#[tauri::command]
+async fn open_steamdb_webview(
+    app: tauri::AppHandle,
+    depot_id: String,
+) -> Result<(), RewindError> {
+    let url = format!("https://steamdb.info/depot/{}/manifests/", depot_id);
+    let label = format!("steamdb-{}", depot_id);
+
+    // If a window with this label already exists, focus it instead of creating a new one
+    if let Some(existing) = app.get_webview_window(&label) {
+        existing.set_focus().map_err(|e| {
+            RewindError::Infrastructure(format!("Failed to focus SteamDB window: {}", e))
+        })?;
+        return Ok(());
+    }
+
+    let js = STEAMDB_EXTRACTION_JS.to_string();
+
+    let _webview_window = WebviewWindowBuilder::new(
+        &app,
+        &label,
+        tauri::WebviewUrl::External(url.parse().map_err(|e| {
+            RewindError::Infrastructure(format!("Invalid SteamDB URL: {}", e))
+        })?),
+    )
+    .title(format!("SteamDB - Depot {}", depot_id))
+    .inner_size(1024.0, 768.0)
+    .on_page_load(move |webview, _payload| {
+        let js = js.clone();
+        let _ = webview.eval(&js);
+    })
+    .build()
+    .map_err(|e| {
+        RewindError::Infrastructure(format!("Failed to create SteamDB webview: {}", e))
+    })?;
+
+    Ok(())
+}
+
+/// Close the SteamDB webview window for a depot.
+#[tauri::command]
+async fn close_steamdb_webview(
+    app: tauri::AppHandle,
+    depot_id: String,
+) -> Result<(), RewindError> {
+    let label = format!("steamdb-{}", depot_id);
+    if let Some(window) = app.get_webview_window(&label) {
+        window.destroy().map_err(|e| {
+            RewindError::Infrastructure(format!("Failed to close SteamDB window: {}", e))
+        })?;
+    }
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let saved_username = load_username();
@@ -381,6 +496,8 @@ pub fn run() {
             get_username,
             has_credentials,
             clear_credentials,
+            open_steamdb_webview,
+            close_steamdb_webview,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

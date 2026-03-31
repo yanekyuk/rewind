@@ -1,0 +1,12 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "steamdb-webview",
+  "description": "Capability for SteamDB webview windows to emit events back to the app",
+  "windows": ["steamdb-*"],
+  "remote": {
+    "urls": ["https://steamdb.info/*"]
+  },
+  "permissions": [
+    "core:event:default"
+  ]
+}

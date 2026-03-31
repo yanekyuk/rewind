@@ -1,8 +1,9 @@
 import { useEffect, useState, useCallback } from "react";
 import { useManifestList } from "../hooks/useManifestList";
 import { useStartDowngrade } from "../hooks/useStartDowngrade";
+import { useSteamDBWebview } from "../hooks/useSteamDBWebview";
 import type { GameInfo } from "../types/game";
-import { Lock } from "lucide-react";
+import { Lock, ExternalLink } from "lucide-react";
 
 interface VersionSelectProps {
   game: GameInfo;
@@ -39,6 +40,7 @@ export function VersionSelect({
     onAuthRequired,
   });
   const { starting: startingDowngrade, start: startDowngrade } = useStartDowngrade();
+  const steamdb = useSteamDBWebview();
   const [manualId, setManualId] = useState("");
 
   // Use the provided depot ID, falling back to the first installed depot
@@ -99,8 +101,73 @@ export function VersionSelect({
         </div>
       </div>
 
+      <div className="version-select__steamdb">
+        <h2 className="version-select__section-title">SteamDB History</h2>
+        <p className="version-select__steamdb-hint">
+          Browse the full manifest history on SteamDB. You may need to log in for older entries.
+        </p>
+        <button
+          className="version-select__steamdb-open"
+          type="button"
+          onClick={() => depotId && steamdb.open(depotId)}
+          disabled={!depotId || steamdb.loading}
+        >
+          <ExternalLink size={14} />
+          {steamdb.loading ? "Opening SteamDB…" : "Open SteamDB"}
+        </button>
+
+        {steamdb.error && (
+          <p className="version-select__error-message">{steamdb.error}</p>
+        )}
+
+        {steamdb.manifests.length > 0 && (
+          <div className="version-select__list">
+            <h3 className="version-select__list-heading">Extracted Manifests</h3>
+            {steamdb.manifests.map((entry) => {
+              const isCurrent = entry.manifest_id === currentManifestId;
+              const isSelected = selectedManifestId === entry.manifest_id;
+              const classes = [
+                "version-row",
+                isSelected ? "version-row--selected" : "",
+                isCurrent ? "version-row--current" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+
+              const handleRowClick = async () => {
+                await startDowngrade(buildDowngradeParams(entry.manifest_id));
+                onSelectManifest(entry.manifest_id);
+              };
+
+              return (
+                <button
+                  key={entry.manifest_id}
+                  className={classes}
+                  onClick={handleRowClick}
+                  type="button"
+                  disabled={startingDowngrade}
+                >
+                  <div className="version-row__info">
+                    <span className="version-row__branch">
+                      {entry.branch ?? "unknown"}
+                      {isCurrent && (
+                        <span className="version-row__current-badge">current</span>
+                      )}
+                    </span>
+                    {entry.date && (
+                      <span className="version-row__time">{entry.date}</span>
+                    )}
+                  </div>
+                  <span className="version-row__id">{entry.manifest_id}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="version-select__available">
-        <h2 className="version-select__section-title">Available Versions</h2>
+        <h2 className="version-select__section-title">PICS Manifests</h2>
 
         {loading && (
           <p className="version-select__loading">Loading available versions...</p>
