@@ -67,12 +67,12 @@ Enumerate all available manifests for a depot.
 
 ```json
 {"type":"manifest_list","manifests":[
-  {"id":"7446650175280810671","date":"2026-03-22 16:01:45"},
-  {"id":"7446500175280810670","date":"2026-03-15 14:30:20"}
+  {"id":"7446650175280810671","branch":"public","time_updated":1711123305},
+  {"id":"7446500175280810670","branch":"beta","time_updated":1711000000,"pwd_required":true}
 ]}
 ```
 
-Returns a list of available manifests for the depot, ordered newest first. Includes manifest ID and build date for each.
+Returns a list of available manifests for the depot — one entry per branch. Each entry includes the manifest GID, branch name, and optional metadata (`time_updated` as Unix timestamp, `pwd_required` if the branch requires a password).
 
 **Exit code:** 0 on success, 1 on failure.
 
@@ -151,7 +151,7 @@ All output is newline-delimited JSON where the first field is `type`:
 | `log` | Info/warning logs | `type`, `level` (info/warn), `message` |
 | `guard_prompt` | 2FA required | `type`, `method` (email/mobile), `hint` |
 | `auth_success` | Login completed | `type`, `session_file` |
-| `manifest_list` | Available manifests | `type`, `manifests` (array of {id, date}) |
+| `manifest_list` | Available manifests | `type`, `manifests` (array of {id, branch, time_updated?, pwd_required?}) |
 | `manifest` | Manifest metadata | `type`, `depot_id`, `manifest_id`, `total_files`, `total_chunks`, `total_bytes_on_disk`, `total_bytes_compressed`, `date`, `files` |
 | `progress` | Download progress | `type`, `percent`, `bytes_downloaded`, `bytes_total` |
 | `error` | Error message | `type`, `code`, `message` |

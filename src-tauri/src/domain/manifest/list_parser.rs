@@ -18,7 +18,7 @@ struct ManifestListMessage {
 /// Expected format:
 /// ```json
 /// {"type":"log","level":"info","message":"..."}
-/// {"type":"manifest_list","manifests":[{"id":"123","date":"public"}]}
+/// {"type":"manifest_list","manifests":[{"id":"123","branch":"public","time_updated":1711123305}]}
 /// {"type":"done","success":true}
 /// ```
 pub fn parse_manifest_list(output: &str) -> Vec<ManifestListEntry> {
