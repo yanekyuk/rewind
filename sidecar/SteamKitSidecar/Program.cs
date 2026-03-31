@@ -8,6 +8,7 @@ namespace SteamKitSidecar;
 ///
 /// Usage:
 ///   SteamKitSidecar login --username <user> --password <pass> [--guard-code <code>]
+///   SteamKitSidecar list-depots --username <user> [--password <pass>] --app <id>
 ///   SteamKitSidecar list-manifests --username <user> [--password <pass>] --app <id> --depot <id>
 ///   SteamKitSidecar get-manifest --username <user> [--password <pass>] --app <id> --depot <id> --manifest <id>
 ///   SteamKitSidecar download --username <user> [--password <pass>] --app <id> --depot <id> --manifest <id> --dir <path> [--filelist <path>]
@@ -21,7 +22,7 @@ public static class Program
     {
         if (args.Length == 0)
         {
-            JsonOutput.Error("USAGE", "No command specified. Available commands: login, list-manifests, get-manifest, download");
+            JsonOutput.Error("USAGE", "No command specified. Available commands: login, list-depots, list-manifests, get-manifest, download");
             return 1;
         }
 
@@ -33,6 +34,7 @@ public static class Program
             return command switch
             {
                 "login" => await HandleLogin(options),
+                "list-depots" => await HandleListDepots(options),
                 "list-manifests" => await HandleListManifests(options),
                 "get-manifest" => await HandleGetManifest(options),
                 "download" => await HandleDownload(options),
@@ -54,6 +56,16 @@ public static class Program
         var guardCode = GetOptional(options, "guard-code");
 
         return await LoginCommand.RunAsync(username, password, guardCode);
+    }
+
+    private static async Task<int> HandleListDepots(Dictionary<string, string> options)
+    {
+        var username = GetRequired(options, "username");
+        var password = GetOptional(options, "password");
+        var appId = uint.Parse(GetRequired(options, "app"));
+        var guardCode = GetOptional(options, "guard-code");
+
+        return await ListDepotsCommand.RunAsync(username, password, guardCode, appId);
     }
 
     private static async Task<int> HandleListManifests(Dictionary<string, string> options)
@@ -95,7 +107,7 @@ public static class Program
 
     private static int HandleUnknown(string command)
     {
-        JsonOutput.Error("UNKNOWN_COMMAND", $"Unknown command: {command}. Available: login, list-manifests, get-manifest, download");
+        JsonOutput.Error("UNKNOWN_COMMAND", $"Unknown command: {command}. Available: login, list-depots, list-manifests, get-manifest, download");
         return 1;
     }
 
