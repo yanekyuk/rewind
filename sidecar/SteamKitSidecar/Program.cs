@@ -8,9 +8,12 @@ namespace SteamKitSidecar;
 ///
 /// Usage:
 ///   SteamKitSidecar login --username <user> --password <pass> [--guard-code <code>]
-///   SteamKitSidecar list-manifests --username <user> --password <pass> --app <id> --depot <id>
-///   SteamKitSidecar get-manifest --username <user> --password <pass> --app <id> --depot <id> --manifest <id>
-///   SteamKitSidecar download --username <user> --password <pass> --app <id> --depot <id> --manifest <id> --dir <path> [--filelist <path>]
+///   SteamKitSidecar list-manifests --username <user> [--password <pass>] --app <id> --depot <id>
+///   SteamKitSidecar get-manifest --username <user> [--password <pass>] --app <id> --depot <id> --manifest <id>
+///   SteamKitSidecar download --username <user> [--password <pass>] --app <id> --depot <id> --manifest <id> --dir <path> [--filelist <path>]
+///
+/// When --password is omitted, the sidecar attempts to use a saved session token.
+/// If no saved session exists, it exits with error code AUTH_REQUIRED.
 /// </summary>
 public static class Program
 {
@@ -56,7 +59,7 @@ public static class Program
     private static async Task<int> HandleListManifests(Dictionary<string, string> options)
     {
         var username = GetRequired(options, "username");
-        var password = GetRequired(options, "password");
+        var password = GetOptional(options, "password");
         var appId = uint.Parse(GetRequired(options, "app"));
         var depotId = uint.Parse(GetRequired(options, "depot"));
         var guardCode = GetOptional(options, "guard-code");
@@ -67,7 +70,7 @@ public static class Program
     private static async Task<int> HandleGetManifest(Dictionary<string, string> options)
     {
         var username = GetRequired(options, "username");
-        var password = GetRequired(options, "password");
+        var password = GetOptional(options, "password");
         var appId = uint.Parse(GetRequired(options, "app"));
         var depotId = uint.Parse(GetRequired(options, "depot"));
         var manifestId = ulong.Parse(GetRequired(options, "manifest"));
@@ -79,7 +82,7 @@ public static class Program
     private static async Task<int> HandleDownload(Dictionary<string, string> options)
     {
         var username = GetRequired(options, "username");
-        var password = GetRequired(options, "password");
+        var password = GetOptional(options, "password");
         var appId = uint.Parse(GetRequired(options, "app"));
         var depotId = uint.Parse(GetRequired(options, "depot"));
         var manifestId = ulong.Parse(GetRequired(options, "manifest"));

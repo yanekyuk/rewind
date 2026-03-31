@@ -9,7 +9,7 @@ namespace SteamKitSidecar.Commands;
 /// </summary>
 public static class ListManifestsCommand
 {
-    public static async Task<int> RunAsync(string username, string password, string? guardCode, uint appId, uint depotId)
+    public static async Task<int> RunAsync(string username, string? password, string? guardCode, uint appId, uint depotId)
     {
         using var session = new SteamSession();
 
@@ -90,6 +90,12 @@ public static class ListManifestsCommand
             {
                 cts.Cancel();
             }
+        }
+        catch (AuthRequiredException ex)
+        {
+            JsonOutput.Error("AUTH_REQUIRED", ex.Message);
+            JsonOutput.Done(false);
+            return 1;
         }
         catch (Exception ex)
         {

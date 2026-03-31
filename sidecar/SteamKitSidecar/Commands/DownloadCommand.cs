@@ -10,7 +10,7 @@ namespace SteamKitSidecar.Commands;
 public static class DownloadCommand
 {
     public static async Task<int> RunAsync(
-        string username, string password, string? guardCode,
+        string username, string? password, string? guardCode,
         uint appId, uint depotId, ulong manifestId,
         string outputDir, string? filelistPath)
     {
@@ -143,6 +143,12 @@ public static class DownloadCommand
             {
                 cts.Cancel();
             }
+        }
+        catch (AuthRequiredException ex)
+        {
+            JsonOutput.Error("AUTH_REQUIRED", ex.Message);
+            JsonOutput.Done(false);
+            return 1;
         }
         catch (Exception ex)
         {
