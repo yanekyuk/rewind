@@ -3,7 +3,7 @@ pub mod domain;
 pub mod error;
 pub mod infrastructure;
 
-use application::auth::{clear_from_keychain, load_from_keychain, save_to_keychain, AuthStore};
+use application::auth::{clear_saved_username, load_username, save_username, AuthStore};
 use domain::auth::Credentials;
 use domain::game::GameInfo;
 use domain::manifest::ManifestListEntry;
@@ -41,41 +41,36 @@ async fn set_credentials(
     depot_downloader::login(&app, &credentials).await?;
     eprintln!("[set_credentials] authentication successful");
 
+    save_username(&credentials.username);
     state
-        .set(credentials.clone())
+        .set(credentials)
         .map_err(|e| RewindError::AuthFailed(e.to_string()))?;
-    save_to_keychain(&credentials);
     Ok(())
 }
 
-/// Check whether credentials have been stored in the current session.
+/// Check whether the user has an active or saved session.
 ///
-/// Returns `true` if credentials are available for SteamKit sidecar operations.
+/// Returns `true` if credentials are available this session OR if a
+/// username was saved from a previous session (sidecar session may still be valid).
 #[tauri::command]
 fn get_auth_state(state: tauri::State<'_, AuthStore>) -> bool {
-    state.is_set()
+    state.is_set() || state.has_saved_session()
 }
 
-/// Return the username of the currently authenticated user, if any.
+/// Return the username of the authenticated or saved user, if any.
 #[tauri::command]
 fn get_username(state: tauri::State<'_, AuthStore>) -> Option<String> {
-    state.get().map(|c| c.username)
+    state.username()
 }
 
-/// Remove credentials from memory and from the OS keychain.
+/// Remove credentials from memory and saved username from disk.
 #[tauri::command]
 fn clear_credentials(state: tauri::State<'_, AuthStore>) {
     state.clear();
-    clear_from_keychain();
+    clear_saved_username();
 }
 
 /// List all installed Steam games across all detected Steam library folders.
-///
-/// This Tauri IPC command:
-/// 1. Detects Steam installation paths (default + additional library folders)
-/// 2. Scans each steamapps directory for appmanifest ACF files
-/// 3. Parses each into an AppState, then converts to GameInfo
-/// 4. Returns the full list to the frontend
 #[tauri::command]
 async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
     let steamapps_dirs = steam::discover_steamapps_dirs().await;
@@ -100,20 +95,15 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
         }
     }
 
-    // Sort by name for consistent ordering
     games.sort_by(|a, b| a.name.cmp(&b.name));
-
     Ok(games)
 }
 
 /// List available manifests for a depot using the SteamKit sidecar.
 ///
-/// This Tauri IPC command:
-/// 1. Reads credentials from the AuthStore
-/// 2. Spawns the SteamKit sidecar with stored credentials
-/// 3. Collects the manifest listing JSON output (newline-delimited)
-/// 4. Parses it into ManifestListEntry structs
-/// 5. Returns the list to the frontend
+/// Requires full credentials (username + password) from the current session.
+/// If only a saved username exists (no password), returns AuthRequired error
+/// so the frontend can prompt for re-login.
 #[tauri::command]
 async fn list_manifests(
     app: tauri::AppHandle,
@@ -122,7 +112,7 @@ async fn list_manifests(
     depot_id: String,
 ) -> Result<Vec<ManifestListEntry>, RewindError> {
     let credentials = state.get().ok_or_else(|| {
-        RewindError::AuthRequired("Credentials not set. Please sign in first.".to_string())
+        RewindError::AuthRequired("Session expired. Please sign in again.".to_string())
     })?;
     eprintln!("[list_manifests] spawning sidecar for app={} depot={}", app_id, depot_id);
     let start = std::time::Instant::now();
@@ -133,17 +123,8 @@ async fn list_manifests(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Pre-populate AuthStore from the OS keychain if credentials were saved previously.
-    let auth_store = AuthStore::default();
-    match load_from_keychain() {
-        Some(saved) => {
-            eprintln!("[startup] loaded credentials from keychain for user: {}", saved.username);
-            let _ = auth_store.set(saved);
-        }
-        None => {
-            eprintln!("[startup] no credentials found in keychain");
-        }
-    }
+    let saved_username = load_username();
+    let auth_store = AuthStore::with_saved_username(saved_username);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
