@@ -28,3 +28,6 @@ src-tauri/binaries/
 
 # Claude Code — commit shared settings, ignore local overrides
 .claude/settings.local.json
+
+# Internal dev notes (not shipped)
+docs/internal/

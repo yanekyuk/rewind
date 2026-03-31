@@ -102,6 +102,22 @@ public sealed class SteamSession : IDisposable
                     return true;
                 }
                 JsonOutput.Warn("Saved session expired, performing fresh login...");
+
+                // Delete the stale session so future attempts skip this path
+                try { File.Delete(sessionFile); } catch { /* ignore */ }
+
+                // Steam disconnects after a failed login — wait for it to settle,
+                // then reconnect with a fresh TCS before attempting credential auth
+                _client.Disconnect();
+                await Task.Delay(500);
+                _connectTcs = new TaskCompletionSource<bool>();
+                _client.Connect();
+                var reconnected = await _connectTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
+                if (!reconnected)
+                {
+                    JsonOutput.Error("CONNECTION_FAILED", "Failed to reconnect to Steam after expired session");
+                    return false;
+                }
             }
 
             // Fresh login with credential authentication
@@ -138,7 +154,7 @@ public sealed class SteamSession : IDisposable
                 {
                     Username = pollResult.AccountName,
                     RefreshToken = pollResult.RefreshToken,
-                    GuardData = authSession.NewGuardData,
+                    GuardData = pollResult.NewGuardData,
                 });
                 JsonOutput.AuthSuccess(pollResult.AccountName);
             }
@@ -209,6 +225,8 @@ public sealed class SteamSession : IDisposable
                 return savedSession.Username;
             }
 
+            // Session expired — delete the stale file
+            try { File.Delete(latestFile.FullName); } catch { /* ignore */ }
             return null;
         }
         finally

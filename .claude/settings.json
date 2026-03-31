@@ -1,9 +1,10 @@
 {
   "enabledPlugins": {
-    "swe@arcana": true,
+    "swe@arcana": false,
     "context7@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
     "rust-analyzer-lsp@claude-plugins-official": true,
-    "impeccable@impeccable": true
+    "impeccable@impeccable": true,
+    "superpowers@claude-plugins-official": true
   }
 }
