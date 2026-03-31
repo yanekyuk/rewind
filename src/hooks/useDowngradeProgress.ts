@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
+import { listen as tauriListen } from "@tauri-apps/api/event";
 import type { DowngradeProgressEvent } from "../types/downgrade";
+
+type ListenFn = typeof tauriListen;
 
 interface UseDowngradeProgressResult {
   phase: "comparing" | "downloading" | "applying" | "complete" | "error" | null;
@@ -13,13 +15,8 @@ interface UseDowngradeProgressResult {
   isActive: boolean;
 }
 
-/**
- * Hook to listen to downgrade-progress Tauri events and track state.
- *
- * Automatically cleans up listener on unmount.
- * Calculates ETA from speed and remaining bytes.
- */
-export function useDowngradeProgress(): UseDowngradeProgressResult {
+export function useDowngradeProgress(listenOverride?: ListenFn): UseDowngradeProgressResult {
+  const listenFn = listenOverride ?? tauriListen;
   const [phase, setPhase] = useState<UseDowngradeProgressResult["phase"]>(null);
   const [percent, setPercent] = useState<number>();
   const [bytesDownloaded, setBytesDownloaded] = useState<number>();
@@ -34,7 +31,7 @@ export function useDowngradeProgress(): UseDowngradeProgressResult {
     let unlistener: (() => void) | null = null;
 
     (async () => {
-      unlistener = await listen<DowngradeProgressEvent>(
+      unlistener = await listenFn<DowngradeProgressEvent>(
         "downgrade-progress",
         (event) => {
           const { phase: newPhase, percent: newPercent, bytes_downloaded, bytes_total, message } = event.payload;

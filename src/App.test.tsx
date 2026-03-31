@@ -7,7 +7,6 @@ const mockUseAuth = mock();
 const mockUseGameList = mock();
 const mockUseManifestList = mock();
 const mockUseDepotList = mock();
-
 mock.module("./hooks/useAuth", () => ({
   useAuth: () => mockUseAuth(),
 }));
@@ -22,6 +21,28 @@ mock.module("./hooks/useManifestList", () => ({
 
 mock.module("./hooks/useDepotList", () => ({
   useDepotList: () => mockUseDepotList(),
+}));
+
+mock.module("@tauri-apps/api/core", () => ({
+  Channel: class {},
+  PluginListener: class {},
+  Resource: class {},
+  SERIALIZE_TO_IPC_FN: Symbol("SERIALIZE_TO_IPC_FN"),
+  addPluginListener: mock(),
+  checkPermissions: mock(),
+  convertFileSrc: mock(),
+  invoke: mock(),
+  isTauri: mock(),
+  requestPermissions: mock(),
+  transformCallback: mock(),
+}));
+
+mock.module("@tauri-apps/api/event", () => ({
+  TauriEvent: {},
+  emit: mock(),
+  emitTo: mock(),
+  listen: mock(),
+  once: mock(),
 }));
 
 const { default: App } = await import("./App");

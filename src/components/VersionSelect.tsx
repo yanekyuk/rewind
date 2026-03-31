@@ -21,6 +21,13 @@ function formatTimestamp(timestamp: number): string {
   });
 }
 
+/** Derive the steamapps directory from a game's install_path (steamapps/common/<dir>). */
+function getSteamappsPath(installPath: string): string {
+  const idx = installPath.toLowerCase().indexOf("steamapps");
+  if (idx === -1) return installPath;
+  return installPath.slice(0, idx + "steamapps".length);
+}
+
 export function VersionSelect({
   game,
   depotId: depotIdProp,
@@ -51,27 +58,25 @@ export function VersionSelect({
     }
   };
 
+  const buildDowngradeParams = useCallback((targetManifestId: string) => ({
+    app_id: game.appid,
+    depot_id: depotId,
+    target_manifest_id: targetManifestId,
+    current_manifest_id: currentManifestId,
+    latest_buildid: game.buildid,
+    latest_manifest_id: installedDepot?.manifest ?? "",
+    latest_size: installedDepot?.size ?? "0",
+    install_path: game.install_path,
+    steamapps_path: getSteamappsPath(game.install_path),
+  }), [game, depotId, currentManifestId, installedDepot]);
+
   const handleManualSubmit = useCallback(async () => {
     const trimmed = manualId.trim();
     if (trimmed) {
-      const depot = game.depots[0];
-      const steamappsPath = game.install_path.split("steamapps")[0] + "steamapps";
-
-      await startDowngrade({
-        app_id: game.appid,
-        depot_id: depot?.depot_id ?? "",
-        target_manifest_id: trimmed,
-        current_manifest_id: depot?.manifest ?? "",
-        latest_buildid: game.buildid,
-        latest_manifest_id: depot?.manifest ?? "",
-        latest_size: depot?.size ?? "0",
-        install_path: game.install_path,
-        steamapps_path: steamappsPath,
-      });
-
+      await startDowngrade(buildDowngradeParams(trimmed));
       onSelectManifest(trimmed);
     }
-  }, [manualId, game, onSelectManifest, startDowngrade]);
+  }, [manualId, buildDowngradeParams, onSelectManifest, startDowngrade]);
 
   return (
     <div className="version-select">
@@ -132,21 +137,7 @@ export function VersionSelect({
                 .join(" ");
 
               const handleRowClick = async () => {
-                const depot = game.depots[0];
-                const steamappsPath = game.install_path.split("steamapps")[0] + "steamapps";
-
-                await startDowngrade({
-                  app_id: game.appid,
-                  depot_id: depot?.depot_id ?? "",
-                  target_manifest_id: entry.manifest_id,
-                  current_manifest_id: currentManifestId,
-                  latest_buildid: game.buildid,
-                  latest_manifest_id: depot?.manifest ?? "",
-                  latest_size: depot?.size ?? "0",
-                  install_path: game.install_path,
-                  steamapps_path: steamappsPath,
-                });
-
+                await startDowngrade(buildDowngradeParams(entry.manifest_id));
                 onSelectManifest(entry.manifest_id);
               };
 

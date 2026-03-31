@@ -7,12 +7,14 @@ import { GameSidebar } from "./components/GameSidebar";
 import { GameDetail } from "./components/GameDetail";
 import { VersionSelect } from "./components/VersionSelect";
 import { DowngradeProgress } from "./components/DowngradeProgress";
+import { useDowngradeProgress } from "./hooks/useDowngradeProgress";
 import type { ViewId } from "./types/navigation";
 import type { GameInfo } from "./types/game";
 import "./App.css";
 
 function App() {
   const auth = useAuth();
+  const downgradeProgress = useDowngradeProgress();
   const { authenticated, signOut } = auth;
   const [currentView, setCurrentView] = useState<ViewId>("auth-gate");
   const [selectedGame, setSelectedGame] = useState<GameInfo | null>(null);
@@ -143,6 +145,7 @@ function App() {
               <DowngradeProgress
                 game={downgradeContext.game}
                 targetManifestId={downgradeContext.targetManifestId}
+                progress={downgradeProgress}
                 onComplete={handleDowngradeComplete}
               />
             )}

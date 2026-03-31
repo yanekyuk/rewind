@@ -42,6 +42,7 @@ export function useStartDowngrade(): UseStartDowngradeResult {
       const errorMessage =
         err instanceof Error ? err.message : String(err);
       setError(errorMessage);
+    } finally {
       setStarting(false);
     }
   }, []);

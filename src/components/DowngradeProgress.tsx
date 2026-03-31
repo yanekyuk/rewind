@@ -1,53 +1,55 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect } from "react";
 import { CheckCircle, AlertCircle, RotateCcw } from "lucide-react";
-import { useDowngradeProgress } from "../hooks/useDowngradeProgress";
 import type { GameInfo } from "../types/game";
 import "./DowngradeProgress.css";
+
+export interface DowngradeProgressState {
+  phase: "comparing" | "downloading" | "applying" | "complete" | "error" | null;
+  percent?: number;
+  bytesDownloaded?: number;
+  bytesTotal?: number;
+  eta?: string;
+  speed?: string;
+  error?: string;
+  isActive: boolean;
+}
 
 interface DowngradeProgressProps {
   game: GameInfo;
   targetManifestId: string;
+  progress: DowngradeProgressState;
   onComplete: () => void;
+  onRetry?: () => void;
   onError?: (error: string) => void;
 }
 
-/**
- * Displays real-time progress of the downgrade operation.
- * Listens to downgrade-progress Tauri events and updates UI accordingly.
- */
 export function DowngradeProgress({
   game,
   targetManifestId,
+  progress,
   onComplete,
+  onRetry,
   onError,
 }: DowngradeProgressProps) {
-  const progress = useDowngradeProgress();
-  const [retrying, setRetrying] = useState(false);
-
-  // Notify parent on completion
   useEffect(() => {
     if (progress.phase === "complete") {
       onComplete();
     }
   }, [progress.phase, onComplete]);
 
-  // Notify parent on error
   useEffect(() => {
     if (progress.phase === "error" && progress.error && onError) {
       onError(progress.error);
     }
   }, [progress.phase, progress.error, onError]);
 
-  const handleRetry = useCallback(() => {
-    setRetrying(true);
-    // In a real implementation, this would trigger a re-call to start_downgrade
-    // For now, just reset the UI
-    window.location.reload();
-  }, []);
-
-  const handleBack = useCallback(() => {
-    onComplete();
-  }, [onComplete]);
+  const handleRetry = () => {
+    if (onRetry) {
+      onRetry();
+    } else {
+      onComplete();
+    }
+  };
 
   const formatBytes = (bytes: number): string => {
     const GB = 1073741824;
@@ -172,41 +174,31 @@ export function DowngradeProgress({
         {progress.phase === "comparing" || progress.phase === "downloading" || progress.phase === "applying" ? (
           <button
             className="downgrade-progress__button downgrade-progress__button--cancel"
-            onClick={handleBack}
+            onClick={onComplete}
             type="button"
           >
             Cancel
           </button>
         ) : progress.phase === "complete" ? (
-          <>
-            <button
-              className="downgrade-progress__button downgrade-progress__button--primary"
-              onClick={handleBack}
-              type="button"
-            >
-              Return to Game
-            </button>
-            <button
-              className="downgrade-progress__button downgrade-progress__button--secondary"
-              onClick={handleBack}
-              type="button"
-            >
-              Back
-            </button>
-          </>
+          <button
+            className="downgrade-progress__button downgrade-progress__button--primary"
+            onClick={onComplete}
+            type="button"
+          >
+            Return to Game
+          </button>
         ) : progress.phase === "error" ? (
           <>
             <button
               className="downgrade-progress__button downgrade-progress__button--primary"
               onClick={handleRetry}
-              disabled={retrying}
               type="button"
             >
               <RotateCcw size={16} /> Retry
             </button>
             <button
               className="downgrade-progress__button downgrade-progress__button--secondary"
-              onClick={handleBack}
+              onClick={onComplete}
               type="button"
             >
               Back

@@ -1,17 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, mock, beforeEach } from "bun:test";
 import { renderHook, waitFor } from "@testing-library/react";
 import { useStartDowngrade } from "./useStartDowngrade";
 
-// Mock Tauri invoke
-const mockInvoke = vi.fn();
-vi.mock("@tauri-apps/api/core", () => ({
-  invoke: mockInvoke,
+const mockInvoke = mock() as any;
+mock.module("@tauri-apps/api/core", () => ({
+  invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
 describe("useStartDowngrade", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockInvoke.mockClear();
+    mockInvoke.mockReset();
   });
 
   it("initializes with starting=false and error=null", () => {
@@ -47,7 +45,7 @@ describe("useStartDowngrade", () => {
     );
   });
 
-  it("handles IPC command success", async () => {
+  it("resets starting state on success", async () => {
     mockInvoke.mockResolvedValueOnce(undefined);
     const { result } = renderHook(() => useStartDowngrade());
 

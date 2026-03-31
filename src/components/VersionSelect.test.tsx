@@ -1,11 +1,15 @@
 import { afterEach, afterAll, describe, it, expect, mock, beforeEach } from "bun:test";
-import { cleanup, render, screen, fireEvent } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import type { GameInfo } from "../types/game";
 
 const mockUseManifestList = mock();
+const mockInvoke = mock();
 
 mock.module("../hooks/useManifestList", () => ({
   useManifestList: () => mockUseManifestList(),
+}));
+mock.module("@tauri-apps/api/core", () => ({
+  invoke: (...args: unknown[]) => mockInvoke(...args),
 }));
 
 const { VersionSelect } = await import("./VersionSelect");
@@ -30,6 +34,8 @@ const mockManifests = [
 describe("VersionSelect", () => {
   beforeEach(() => {
     mockUseManifestList.mockReset();
+    mockInvoke.mockReset();
+    mockInvoke.mockResolvedValue(undefined);
   });
 
   it("displays current version info (build ID, manifest ID)", () => {
@@ -43,6 +49,7 @@ describe("VersionSelect", () => {
     render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={mock()}
       />,
@@ -64,6 +71,7 @@ describe("VersionSelect", () => {
     render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={mock()}
       />,
@@ -83,6 +91,7 @@ describe("VersionSelect", () => {
     render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={mock()}
       />,
@@ -104,6 +113,7 @@ describe("VersionSelect", () => {
     render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={mock()}
       />,
@@ -114,7 +124,7 @@ describe("VersionSelect", () => {
     expect(screen.getByText("7446500175280810670")).toBeInTheDocument();
   });
 
-  it("calls onSelectManifest when a version row is clicked", () => {
+  it("calls onSelectManifest when a version row is clicked", async () => {
     mockUseManifestList.mockReturnValue({
       manifests: mockManifests,
       loading: false,
@@ -126,13 +136,16 @@ describe("VersionSelect", () => {
     render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={onSelectManifest}
       />,
     );
 
     fireEvent.click(screen.getByText("public"));
-    expect(onSelectManifest).toHaveBeenCalledWith("7446650175280810671");
+    await waitFor(() => {
+      expect(onSelectManifest).toHaveBeenCalledWith("7446650175280810671");
+    });
   });
 
   it("highlights the selected version", () => {
@@ -146,6 +159,7 @@ describe("VersionSelect", () => {
     const { container } = render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId="7446650175280810671"
         onSelectManifest={mock()}
       />,
@@ -170,6 +184,7 @@ describe("VersionSelect", () => {
     const { container } = render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={mock()}
       />,
@@ -190,6 +205,7 @@ describe("VersionSelect", () => {
     render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={mock()}
       />,
@@ -210,6 +226,7 @@ describe("VersionSelect", () => {
     render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={mock()}
       />,
@@ -219,7 +236,7 @@ describe("VersionSelect", () => {
     expect(input).toBeInTheDocument();
   });
 
-  it("calls onSelectManifest when manual manifest ID is submitted", () => {
+  it("calls onSelectManifest when manual manifest ID is submitted", async () => {
     mockUseManifestList.mockReturnValue({
       manifests: mockManifests,
       loading: false,
@@ -231,6 +248,7 @@ describe("VersionSelect", () => {
     render(
       <VersionSelect
         game={mockGame}
+        depotId={null}
         selectedManifestId={null}
         onSelectManifest={onSelectManifest}
       />,
@@ -239,6 +257,8 @@ describe("VersionSelect", () => {
     const input = screen.getByPlaceholderText(/manifest id/i);
     fireEvent.change(input, { target: { value: "9999999999" } });
     fireEvent.click(screen.getByRole("button", { name: /use/i }));
-    expect(onSelectManifest).toHaveBeenCalledWith("9999999999");
+    await waitFor(() => {
+      expect(onSelectManifest).toHaveBeenCalledWith("9999999999");
+    });
   });
 });

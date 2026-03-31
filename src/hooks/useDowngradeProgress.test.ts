@@ -1,42 +1,41 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { renderHook, act, waitFor } from "@testing-library/react";
+import { describe, it, expect, mock, beforeEach, afterEach } from "bun:test";
+import { cleanup, renderHook, act, waitFor } from "@testing-library/react";
 import { useDowngradeProgress } from "./useDowngradeProgress";
 
-const mockListen = vi.fn();
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: mockListen,
-}));
-
 describe("useDowngradeProgress", () => {
-  let mockUnlisten: () => void;
+  const mockListen = mock() as any;
+  let mockUnlisten: ReturnType<typeof mock>;
   let capturedCallback: any;
 
   beforeEach(() => {
-    mockUnlisten = vi.fn();
-    mockListen.mockImplementation((event: string, callback: any) => {
+    mockUnlisten = mock();
+    mockListen.mockReset();
+    mockListen.mockImplementation((_event: string, callback: any) => {
       capturedCallback = callback;
       return Promise.resolve(mockUnlisten);
     });
   });
 
   afterEach(() => {
-    vi.clearAllMocks();
+    cleanup();
     capturedCallback = undefined;
   });
 
-  it("initializes with null phase", async () => {
-    const { result } = renderHook(() => useDowngradeProgress());
+  it("initializes with null phase", () => {
+    const { result } = renderHook(() => useDowngradeProgress(mockListen));
     expect(result.current.phase).toBeNull();
     expect(result.current.isActive).toBe(false);
   });
 
   it("sets up listener on mount", async () => {
-    renderHook(() => useDowngradeProgress());
-    expect(mockListen).toHaveBeenCalledWith("downgrade-progress", expect.any(Function));
+    renderHook(() => useDowngradeProgress(mockListen));
+    await waitFor(() => {
+      expect(mockListen).toHaveBeenCalledWith("downgrade-progress", expect.any(Function));
+    });
   });
 
   it("cleans up listener on unmount", async () => {
-    const { unmount } = renderHook(() => useDowngradeProgress());
+    const { unmount } = renderHook(() => useDowngradeProgress(mockListen));
     await waitFor(() => {
       expect(mockListen).toHaveBeenCalled();
     });
@@ -45,18 +44,15 @@ describe("useDowngradeProgress", () => {
   });
 
   it("handles comparing phase", async () => {
-    const { result } = renderHook(() => useDowngradeProgress());
+    const { result } = renderHook(() => useDowngradeProgress(mockListen));
 
     await waitFor(() => {
       expect(capturedCallback).toBeDefined();
     });
 
-    // Simulate a comparing event
     act(() => {
       capturedCallback({
-        payload: {
-          phase: "comparing",
-        } as any,
+        payload: { phase: "comparing" },
       });
     });
 
@@ -68,7 +64,7 @@ describe("useDowngradeProgress", () => {
   });
 
   it("handles downloading phase with metrics", async () => {
-    const { result } = renderHook(() => useDowngradeProgress());
+    const { result } = renderHook(() => useDowngradeProgress(mockListen));
 
     await waitFor(() => {
       expect(capturedCallback).toBeDefined();
@@ -81,7 +77,7 @@ describe("useDowngradeProgress", () => {
           percent: 50,
           bytes_downloaded: 5000000000,
           bytes_total: 10000000000,
-        } as any,
+        },
       });
     });
 
@@ -95,7 +91,7 @@ describe("useDowngradeProgress", () => {
   });
 
   it("handles applying phase", async () => {
-    const { result } = renderHook(() => useDowngradeProgress());
+    const { result } = renderHook(() => useDowngradeProgress(mockListen));
 
     await waitFor(() => {
       expect(capturedCallback).toBeDefined();
@@ -103,9 +99,7 @@ describe("useDowngradeProgress", () => {
 
     act(() => {
       capturedCallback({
-        payload: {
-          phase: "applying",
-        } as any,
+        payload: { phase: "applying" },
       });
     });
 
@@ -116,7 +110,7 @@ describe("useDowngradeProgress", () => {
   });
 
   it("handles complete phase", async () => {
-    const { result } = renderHook(() => useDowngradeProgress());
+    const { result } = renderHook(() => useDowngradeProgress(mockListen));
 
     await waitFor(() => {
       expect(capturedCallback).toBeDefined();
@@ -124,9 +118,7 @@ describe("useDowngradeProgress", () => {
 
     act(() => {
       capturedCallback({
-        payload: {
-          phase: "complete",
-        } as any,
+        payload: { phase: "complete" },
       });
     });
 
@@ -137,7 +129,7 @@ describe("useDowngradeProgress", () => {
   });
 
   it("handles error phase with message", async () => {
-    const { result } = renderHook(() => useDowngradeProgress());
+    const { result } = renderHook(() => useDowngradeProgress(mockListen));
 
     await waitFor(() => {
       expect(capturedCallback).toBeDefined();
@@ -148,7 +140,7 @@ describe("useDowngradeProgress", () => {
         payload: {
           phase: "error",
           message: "Download failed",
-        } as any,
+        },
       });
     });
 

@@ -1,27 +1,13 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { afterEach, describe, it, expect, mock, beforeEach } from "bun:test";
+import { cleanup, render, screen } from "@testing-library/react";
 import { DowngradeProgress } from "./DowngradeProgress";
+import type { DowngradeProgressState } from "./DowngradeProgress";
 import type { GameInfo } from "../types/game";
-
-// Mock the hook
-const mockUseDowngradeProgress = vi.fn();
-vi.mock("../hooks/useDowngradeProgress", () => ({
-  useDowngradeProgress: mockUseDowngradeProgress,
-}));
-
-import { useDowngradeProgress } from "../hooks/useDowngradeProgress";
 
 const mockGame: GameInfo = {
   appid: "3321460",
   name: "Test Game",
-  state_flags: 4,
-  size_on_disk: "50000000000",
   buildid: "12345",
-  last_updated: "1640000000",
-  update_pending: false,
-  install_path: "/path/to/game",
-  target_build_id: "",
-  bytes_to_download: "",
   depots: [
     {
       depot_id: "3321461",
@@ -29,28 +15,30 @@ const mockGame: GameInfo = {
       size: "50000000000",
     },
   ],
+  install_path: "/home/user/.steam/steamapps/common/Test Game",
 };
 
+const nullProgress: DowngradeProgressState = { phase: null, isActive: false };
+
 describe("DowngradeProgress", () => {
-  const mockOnComplete = vi.fn();
-  const mockOnError = vi.fn();
+  const mockOnComplete = mock();
+  const mockOnRetry = mock();
+  const mockOnError = mock();
+
+  afterEach(cleanup);
 
   beforeEach(() => {
-    vi.clearAllMocks();
     mockOnComplete.mockClear();
+    mockOnRetry.mockClear();
     mockOnError.mockClear();
   });
 
   it("renders comparing phase", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "comparing",
-      isActive: true,
-    });
-
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{ phase: "comparing", isActive: true }}
         onComplete={mockOnComplete}
       />
     );
@@ -62,20 +50,19 @@ describe("DowngradeProgress", () => {
   });
 
   it("renders downloading phase with metrics", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "downloading",
-      percent: 45,
-      bytesDownloaded: 4500000000,
-      bytesTotal: 10000000000,
-      speed: "12.5 MB/s",
-      eta: "~5 min",
-      isActive: true,
-    });
-
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{
+          phase: "downloading",
+          percent: 45,
+          bytesDownloaded: 4500000000,
+          bytesTotal: 10000000000,
+          speed: "12.5 MB/s",
+          eta: "~5 min",
+          isActive: true,
+        }}
         onComplete={mockOnComplete}
       />
     );
@@ -87,15 +74,11 @@ describe("DowngradeProgress", () => {
   });
 
   it("renders applying phase", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "applying",
-      isActive: true,
-    });
-
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{ phase: "applying", isActive: true }}
         onComplete={mockOnComplete}
       />
     );
@@ -107,15 +90,11 @@ describe("DowngradeProgress", () => {
   });
 
   it("renders complete phase", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "complete",
-      isActive: false,
-    });
-
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{ phase: "complete", isActive: false }}
         onComplete={mockOnComplete}
       />
     );
@@ -125,24 +104,12 @@ describe("DowngradeProgress", () => {
     expect(screen.getByText(/Important/)).toBeInTheDocument();
   });
 
-  it("calls onComplete when phase becomes complete", () => {
-    const { rerender } = render(
+  it("calls onComplete when phase is complete", () => {
+    render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
-        onComplete={mockOnComplete}
-      />
-    );
-
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "complete",
-      isActive: false,
-    });
-
-    rerender(
-      <DowngradeProgress
-        game={mockGame}
-        targetManifestId="1234567890"
+        progress={{ phase: "complete", isActive: false }}
         onComplete={mockOnComplete}
       />
     );
@@ -151,16 +118,11 @@ describe("DowngradeProgress", () => {
   });
 
   it("renders error phase with message", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "error",
-      error: "Download failed due to network error",
-      isActive: false,
-    });
-
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{ phase: "error", error: "Download failed due to network error", isActive: false }}
         onComplete={mockOnComplete}
         onError={mockOnError}
       />
@@ -173,16 +135,11 @@ describe("DowngradeProgress", () => {
   });
 
   it("shows cancel button during active phases", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "downloading",
-      percent: 50,
-      isActive: true,
-    });
-
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{ phase: "downloading", percent: 50, isActive: true }}
         onComplete={mockOnComplete}
       />
     );
@@ -191,15 +148,11 @@ describe("DowngradeProgress", () => {
   });
 
   it("shows return to game button in complete state", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "complete",
-      isActive: false,
-    });
-
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{ phase: "complete", isActive: false }}
         onComplete={mockOnComplete}
       />
     );
@@ -210,16 +163,11 @@ describe("DowngradeProgress", () => {
   });
 
   it("shows retry button in error state", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "error",
-      error: "Failed",
-      isActive: false,
-    });
-
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{ phase: "error", error: "Failed", isActive: false }}
         onComplete={mockOnComplete}
       />
     );
@@ -229,16 +177,41 @@ describe("DowngradeProgress", () => {
     ).toBeInTheDocument();
   });
 
-  it("handles return to game button click", () => {
-    mockUseDowngradeProgress.mockReturnValue({
-      phase: "complete",
-      isActive: false,
-    });
-
+  it("calls onRetry when retry button is clicked", () => {
     render(
       <DowngradeProgress
         game={mockGame}
         targetManifestId="1234567890"
+        progress={{ phase: "error", error: "Failed", isActive: false }}
+        onComplete={mockOnComplete}
+        onRetry={mockOnRetry}
+      />
+    );
+
+    screen.getByRole("button", { name: /Retry/ }).click();
+    expect(mockOnRetry).toHaveBeenCalled();
+  });
+
+  it("falls back to onComplete when retry clicked without onRetry prop", () => {
+    render(
+      <DowngradeProgress
+        game={mockGame}
+        targetManifestId="1234567890"
+        progress={{ phase: "error", error: "Failed", isActive: false }}
+        onComplete={mockOnComplete}
+      />
+    );
+
+    screen.getByRole("button", { name: /Retry/ }).click();
+    expect(mockOnComplete).toHaveBeenCalled();
+  });
+
+  it("handles return to game button click", () => {
+    render(
+      <DowngradeProgress
+        game={mockGame}
+        targetManifestId="1234567890"
+        progress={{ phase: "complete", isActive: false }}
         onComplete={mockOnComplete}
       />
     );
