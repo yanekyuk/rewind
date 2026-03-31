@@ -2,7 +2,7 @@
 
 > Roll back. Play the old way.
 
-`rewind` is a cross-platform Rust CLI tool for managing Steam game version downgrades. It gives you a full-screen interactive TUI to browse your installed games, downgrade to any previous version via [DepotDownloader](https://github.com/SteamRE/DepotDownloader), and switch between cached versions instantly — no re-downloading required.
+`rewind` is a cross-platform tool for managing Steam game version downgrades. It gives you a full-screen interactive TUI to browse your installed games, downgrade to any previous version, and switch between cached versions instantly — no re-downloading required.
 
 ```
 ┌─────────────────────────────────────────────────────┐
@@ -46,22 +46,102 @@ Subsequent version switches just repoint the symlinks — instant, no network re
 
 ---
 
-## Requirements
+# For Gamers
 
-- [.NET Runtime](https://dotnet.microsoft.com/download) (required by DepotDownloader)
-- **Windows**: must run as Administrator (symlink creation requires elevation)
-- **Linux**: `CAP_LINUX_IMMUTABLE` or root recommended for ACF immutability (`chattr +i`); falls back to read-only permissions otherwise
-- **macOS**: no special permissions required
+## Step 1 — Install .NET Runtime
+
+`rewind` uses [DepotDownloader](https://github.com/SteamRE/DepotDownloader) under the hood, which requires the .NET runtime.
+
+**Windows**
+
+Download and run the installer from the official page:
+https://dotnet.microsoft.com/download/dotnet
+
+Or install via winget:
+```
+winget install Microsoft.DotNet.Runtime.9
+```
+
+**macOS**
+
+```sh
+brew install dotnet
+```
+
+Or download the installer from https://dotnet.microsoft.com/download/dotnet
+
+**Linux**
+
+Ubuntu / Debian:
+```sh
+sudo apt-get update && sudo apt-get install -y dotnet-runtime-9.0
+```
+
+Fedora:
+```sh
+sudo dnf install dotnet-runtime-9.0
+```
+
+Arch Linux:
+```sh
+sudo pacman -S dotnet-runtime
+```
+
+Verify the installation:
+```sh
+dotnet --version
+```
+
+## Step 2 — Download rewind
+
+Go to the [Releases](https://github.com/yanekyuk/rewind/releases) page and download the binary for your platform:
+
+| Platform | File |
+|----------|------|
+| Windows (64-bit) | `rewind-x86_64-windows.zip` |
+| macOS (Apple Silicon) | `rewind-aarch64-macos.tar.gz` |
+| macOS (Intel) | `rewind-x86_64-macos.tar.gz` |
+| Linux (64-bit) | `rewind-x86_64-linux.tar.gz` |
+
+Extract the archive and place the `rewind` binary somewhere on your PATH.
+
+## Step 3 — Platform Notes
+
+**Windows** — Run `rewind` as Administrator. Symlink creation requires elevated privileges.
+
+**Linux** — ACF locking (`chattr +i`) works best with root or `CAP_LINUX_IMMUTABLE`. Without it, `rewind` falls back to read-only file permissions, which may not fully prevent Steam from overwriting files.
+
+**macOS** — No special permissions required.
+
+## Keybindings
+
+| Key | Action                          |
+|-----|---------------------------------|
+| `D` | Downgrade / pick cached version |
+| `U` | Upgrade to latest               |
+| `L` | Toggle ACF lock                 |
+| `O` | Open SteamDB page               |
+| `A` | Add Steam library               |
+| `S` | Settings                        |
+| `?` | Help                            |
+| `Q` | Quit                            |
+
+## Data Directory
+
+All state is stored locally — no cloud, no telemetry.
+
+| Platform      | Path                     |
+|---------------|--------------------------|
+| Linux / macOS | `~/.local/share/rewind/` |
+| Windows       | `%APPDATA%\rewind\`      |
 
 ---
 
-## Installation
+# For Developers
 
-```sh
-cargo install rewind
-```
+## Building from Source
 
-Or build from source:
+Requires [Rust](https://rustup.rs) (stable).
 
 ```sh
 git clone https://github.com/yanekyuk/rewind
@@ -69,54 +149,34 @@ cd rewind
 cargo build --release
 ```
 
----
+The binary will be at `target/release/rewind`.
 
-## Data Directory
+## Install via Cargo
 
-All state is stored locally — no cloud, no telemetry.
-
-| Platform      | Path                          |
-|---------------|-------------------------------|
-| Linux / macOS | `~/.local/share/rewind/`      |
-| Windows       | `%APPDATA%\rewind\`           |
-
-```
-~/.local/share/rewind/
-  config.toml          ← Steam username, library paths
-  games.toml           ← per-game version registry
-  bin/
-    DepotDownloader    ← auto-downloaded on first run
-  cache/
-    <app_id>/
-      <depot_id>/
-        <manifest_id>/
-          <delta files>
+```sh
+cargo install rewind
 ```
 
----
+## Workspace Structure
 
-## Keybindings
-
-| Key | Action             |
-|-----|--------------------|
-| `D` | Downgrade / pick cached version |
-| `U` | Upgrade to latest  |
-| `L` | Toggle ACF lock    |
-| `O` | Open SteamDB page  |
-| `A` | Add Steam library  |
-| `S` | Settings           |
-| `?` | Help               |
-| `Q` | Quit               |
-
----
+```
+rewind/
+  Cargo.toml          ← workspace root
+  rewind-core/        ← business logic library
+  rewind-cli/         ← ratatui TUI binary
+  docs/
+```
 
 ## Tech Stack
 
-Built with Rust. Core logic lives in `rewind-core`, the TUI in `rewind-cli`.
-
-`ratatui` · `crossterm` · `tokio` · `serde` · `reqwest` · `keyvalues-parser`
-
----
+| Crate | Purpose |
+|-------|---------|
+| `ratatui` + `crossterm` | Cross-platform full-screen TUI |
+| `tokio` | Async runtime |
+| `serde` + `toml` | Config serialization |
+| `reqwest` | HTTP for downloading DepotDownloader |
+| `keyvalues-parser` | Steam `.acf` / `.vdf` file parsing |
+| `thiserror` | Structured error types |
 
 ## Out of Scope (v1)
 
