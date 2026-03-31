@@ -11,6 +11,8 @@ export interface UseAuthResult {
   authenticated: boolean;
   /** The Steam username of the authenticated user. */
   username: string | null;
+  /** Whether full credentials (username + password) are stored in the OS keychain. */
+  hasStoredCredentials: boolean;
   /** Whether a submission is in progress. */
   submitting: boolean;
   /** Error message from the last failed submission, if any. */
@@ -29,6 +31,7 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
   const [checking, setChecking] = useState(true);
   const [authenticated, setAuthenticated] = useState(false);
   const [username, setUsername] = useState<string | null>(null);
+  const [hasStoredCredentials, setHasStoredCredentials] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,8 +44,14 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
         if (!cancelled) {
           setAuthenticated(isSet);
           if (isSet) {
-            const name = await invoke<string | null>("get_username");
-            if (!cancelled) setUsername(name);
+            const [name, hasCreds] = await Promise.all([
+              invoke<string | null>("get_username"),
+              invoke<boolean>("has_credentials"),
+            ]);
+            if (!cancelled) {
+              setUsername(name);
+              setHasStoredCredentials(hasCreds);
+            }
           }
           setChecking(false);
         }
@@ -70,6 +79,7 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
           guardCode: guardCode ?? null,
         });
         setUsername(username);
+        setHasStoredCredentials(true);
         setAuthenticated(true);
       } catch (err) {
         setError(extractErrorMessage(err));
@@ -83,8 +93,9 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
   const signOut = useCallback(async () => {
     await invoke("clear_credentials");
     setUsername(null);
+    setHasStoredCredentials(false);
     setAuthenticated(false);
   }, [invoke]);
 
-  return { checking, authenticated, username, submitting, error, submit, signOut };
+  return { checking, authenticated, username, hasStoredCredentials, submitting, error, submit, signOut };
 }

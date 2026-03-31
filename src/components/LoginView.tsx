@@ -8,9 +8,10 @@ interface LoginViewProps {
 }
 
 export function LoginView({ auth }: LoginViewProps) {
-  const { checking, submitting, error, submit } = auth;
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const { checking, submitting, error, submit, username, hasStoredCredentials, signOut } = auth;
+  const [formUsername, setFormUsername] = useState("");
+  const [formPassword, setFormPassword] = useState("");
+  const [showFullForm, setShowFullForm] = useState(false);
 
   if (checking) {
     return (
@@ -63,9 +64,69 @@ export function LoginView({ auth }: LoginViewProps) {
     );
   }
 
+  // "Welcome back" view: stored credentials found, no need to re-enter password
+  if (hasStoredCredentials && username && !showFullForm) {
+    const handleResumeSession = (e: FormEvent) => {
+      e.preventDefault();
+      // Submit with stored credentials — the backend already has them loaded
+      // from the keychain. Pass empty password to signal session reuse via sidecar.
+      submit(username, "", undefined);
+    };
+
+    const handleSignInAsDifferent = () => {
+      signOut();
+      setShowFullForm(true);
+    };
+
+    return (
+      <div className="login-view" data-tauri-drag-region>
+        <button
+          className="login-view__close"
+          onClick={() => getCurrentWindow().close()}
+          type="button"
+          title="Close"
+        >
+          <X size={20} />
+        </button>
+        <div className="login-view__card">
+          <h1 className="login-view__brand"><Rewind size={32} /> Rewind</h1>
+
+          <form
+            className="login-view__form"
+            onSubmit={handleResumeSession}
+            role="form"
+            aria-label="Resume session"
+          >
+            <p className="login-view__welcome">
+              Welcome back, <strong>{username}</strong>
+            </p>
+
+            {error && (
+              <p className="login-view__error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button type="submit" className="login-view__submit">
+              Sign in
+            </button>
+
+            <button
+              type="button"
+              className="login-view__alt-action"
+              onClick={handleSignInAsDifferent}
+            >
+              Sign in with a different account
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    submit(username, password, undefined);
+    submit(formUsername, formPassword, undefined);
   };
 
   return (
@@ -95,8 +156,8 @@ export function LoginView({ auth }: LoginViewProps) {
               id="login-username"
               className="login-view__input"
               type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={formUsername}
+              onChange={(e) => setFormUsername(e.target.value)}
               autoComplete="username"
               required
             />
@@ -110,8 +171,8 @@ export function LoginView({ auth }: LoginViewProps) {
               id="login-password"
               className="login-view__input"
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              value={formPassword}
+              onChange={(e) => setFormPassword(e.target.value)}
               autoComplete="current-password"
               required
             />
