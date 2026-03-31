@@ -98,18 +98,23 @@ public sealed class SteamSession : IDisposable
                 var loggedIn = await _loginTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
                 if (loggedIn)
                 {
-                    JsonOutput.AuthSuccess(sessionFile);
+                    JsonOutput.AuthSuccess(username);
                     return true;
                 }
                 JsonOutput.Warn("Saved session expired, performing fresh login...");
             }
 
             // Fresh login with credential authentication
+            // Load previous GuardData to skip Steam Guard on repeat logins
+            string? previousGuardData = savedSession?.GuardData;
+
             var authSession = await _client.Authentication.BeginAuthSessionViaCredentialsAsync(
                 new AuthSessionDetails
                 {
                     Username = username,
                     Password = password,
+                    IsPersistentSession = true,
+                    GuardData = previousGuardData,
                     Authenticator = new JsonAuthenticator(guardCode),
                 }
             );
@@ -122,21 +127,89 @@ public sealed class SteamSession : IDisposable
             {
                 Username = pollResult.AccountName,
                 AccessToken = pollResult.RefreshToken,
+                ShouldRememberPassword = true,
             });
 
             var result = await _loginTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
             if (result)
             {
-                // Save session for future use
+                // Save session with RefreshToken and GuardData for future use
                 SaveSession(sessionFile, new SavedSession
                 {
                     Username = pollResult.AccountName,
                     RefreshToken = pollResult.RefreshToken,
+                    GuardData = authSession.NewGuardData,
                 });
-                JsonOutput.AuthSuccess(sessionFile);
+                JsonOutput.AuthSuccess(pollResult.AccountName);
             }
 
             return result;
+        }
+        finally
+        {
+            cts.Cancel();
+            try { await callbackTask; } catch (OperationCanceledException) { }
+        }
+    }
+
+    /// <summary>
+    /// Check if a saved session exists for any user and attempt silent login.
+    /// Returns the username on success, or null if no valid session exists.
+    /// </summary>
+    public async Task<string?> CheckSessionAsync()
+    {
+        var sessionDir = GetSessionDir();
+        if (!Directory.Exists(sessionDir))
+            return null;
+
+        // Find the most recently modified session file
+        var sessionFiles = Directory.GetFiles(sessionDir, "*.json");
+        if (sessionFiles.Length == 0)
+            return null;
+
+        var latestFile = sessionFiles
+            .Select(f => new FileInfo(f))
+            .OrderByDescending(f => f.LastWriteTimeUtc)
+            .First();
+
+        var savedSession = LoadSession(latestFile.FullName);
+        if (savedSession == null || string.IsNullOrEmpty(savedSession.RefreshToken))
+            return null;
+
+        JsonOutput.Info($"Found saved session for {savedSession.Username}, attempting silent login...");
+
+        _client.Connect();
+
+        var cts = new CancellationTokenSource();
+        var callbackTask = Task.Run(() =>
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                _manager.RunWaitCallbacks(TimeSpan.FromMilliseconds(100));
+            }
+        }, cts.Token);
+
+        try
+        {
+            var connected = await _connectTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            if (!connected)
+                return null;
+
+            _loginTcs = new TaskCompletionSource<bool>();
+
+            _user.LogOn(new SteamUser.LogOnDetails
+            {
+                Username = savedSession.Username,
+                AccessToken = savedSession.RefreshToken,
+            });
+
+            var loggedIn = await _loginTcs.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            if (loggedIn)
+            {
+                return savedSession.Username;
+            }
+
+            return null;
         }
         finally
         {
@@ -257,6 +330,7 @@ internal class SavedSession
 {
     public string Username { get; set; } = "";
     public string RefreshToken { get; set; } = "";
+    public string? GuardData { get; set; }
 }
 
 /// <summary>

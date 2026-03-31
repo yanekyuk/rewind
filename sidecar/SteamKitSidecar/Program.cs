@@ -107,6 +107,12 @@ public static class Program
                 case "login":
                     await HandleLogin(root, requestId);
                     break;
+                case "check-session":
+                    await HandleCheckSession(requestId);
+                    break;
+                case "logout":
+                    HandleLogout(requestId);
+                    break;
                 case "list-depots":
                     await HandleListDepots(root, requestId);
                     break;
@@ -120,7 +126,7 @@ public static class Program
                     await HandleDownload(root, requestId);
                     break;
                 default:
-                    JsonOutput.Error("UNKNOWN_COMMAND", $"Unknown command: {command}. Available: login, list-depots, list-manifests, get-manifest, download", requestId);
+                    JsonOutput.Error("UNKNOWN_COMMAND", $"Unknown command: {command}. Available: login, check-session, logout, list-depots, list-manifests, get-manifest, download", requestId);
                     JsonOutput.Done(false, requestId);
                     break;
             }
@@ -166,6 +172,43 @@ public static class Program
             JsonOutput.Done(false, requestId);
             Cleanup();
         }
+    }
+
+    private static async Task HandleCheckSession(string? requestId)
+    {
+        // Dispose previous session if any
+        Cleanup();
+
+        _session = new SteamSession();
+
+        try
+        {
+            var username = await _session.CheckSessionAsync();
+            if (username != null)
+            {
+                _callbackCts = _session.StartCallbackLoop();
+                JsonOutput.AuthSuccess(username, requestId);
+                JsonOutput.Done(true, requestId);
+            }
+            else
+            {
+                JsonOutput.Error("NO_SESSION", "No valid saved session found", requestId);
+                JsonOutput.Done(false, requestId);
+                Cleanup();
+            }
+        }
+        catch (Exception ex)
+        {
+            JsonOutput.Error("SESSION_CHECK_ERROR", ex.Message, requestId);
+            JsonOutput.Done(false, requestId);
+            Cleanup();
+        }
+    }
+
+    private static void HandleLogout(string? requestId)
+    {
+        Cleanup();
+        JsonOutput.Done(true, requestId);
     }
 
     private static async Task HandleListDepots(JsonElement root, string? requestId)

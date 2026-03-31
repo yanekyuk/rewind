@@ -36,9 +36,9 @@ public static class JsonOutput
         Console.Out.Flush();
     }
 
-    public static void AuthSuccess(string sessionFile, string? requestId = null)
+    public static void AuthSuccess(string username, string? requestId = null)
     {
-        var obj = new { Type = "auth_success", SessionFile = sessionFile, RequestId = requestId };
+        var obj = new { Type = "auth_success", LoggedIn = true, Username = username, RequestId = requestId };
         Console.WriteLine(JsonSerializer.Serialize(obj, Options));
         Console.Out.Flush();
     }
