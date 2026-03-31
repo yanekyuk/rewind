@@ -3,6 +3,7 @@ use rewind_core::{
     depot::DepotProgress,
     scanner::InstalledGame,
 };
+use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +36,20 @@ pub struct VersionPickerState {
     pub selected_index: usize,
 }
 
+/// All information needed to run DepotDownloader interactively after the TUI suspends.
+pub struct PendingDownload {
+    pub binary: PathBuf,
+    pub app_id: u32,
+    pub depot_id: u32,
+    pub manifest_id: String,
+    pub username: String,
+    pub cache_dir: PathBuf,
+    pub game_name: String,
+    pub game_install_path: PathBuf,
+    pub current_manifest_id: String,
+    pub acf_path: PathBuf,
+}
+
 pub struct App {
     pub screen: Screen,
     pub config: Config,
@@ -45,6 +60,8 @@ pub struct App {
     pub settings_state: SettingsState,
     pub version_picker_state: VersionPickerState,
     pub progress_rx: Option<mpsc::Receiver<DepotProgress>>,
+    /// Set when the binary is ready and the TUI should suspend for interactive download.
+    pub pending_download: Option<PendingDownload>,
     pub should_quit: bool,
 }
 
@@ -61,6 +78,7 @@ impl App {
             settings_state: SettingsState::default(),
             version_picker_state: VersionPickerState::default(),
             progress_rx: None,
+            pending_download: None,
             should_quit: false,
         }
     }

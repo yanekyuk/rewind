@@ -1,7 +1,7 @@
 mod app;
 mod ui;
 
-use app::{App, DowngradeWizardState, Screen};
+use app::{App, DowngradeWizardState, PendingDownload, Screen};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use rewind_core::{config, scanner};
 use std::time::Duration;
@@ -11,19 +11,14 @@ use tokio::sync::mpsc;
 async fn main() -> anyhow::Result<()> {
     let cfg = config::load_config().unwrap_or_default();
     let games_cfg = config::load_games().unwrap_or_default();
-
-    let mut terminal = ratatui::init();
-    let result = run(&mut terminal, cfg, games_cfg).await;
-    ratatui::restore();
-
-    result
+    run(cfg, games_cfg).await
 }
 
 async fn run(
-    terminal: &mut ratatui::DefaultTerminal,
     cfg: rewind_core::config::Config,
     games_cfg: rewind_core::config::GamesConfig,
 ) -> anyhow::Result<()> {
+    let mut terminal = ratatui::init();
     let mut app = App::new(cfg, games_cfg);
 
     // Auto-detect Steam libraries on first run
@@ -53,7 +48,35 @@ async fn run(
     loop {
         terminal.draw(|f| ui::draw(f, &app))?;
 
-        // Poll progress channel — collect first, then process to avoid borrow conflicts
+        // If the binary is ready, suspend the TUI and run DepotDownloader interactively.
+        // This lets DepotDownloader prompt for credentials (password, Steam Guard) normally.
+        if let Some(dl) = app.pending_download.take() {
+            ratatui::restore();
+            println!();
+            let dl_result = rewind_core::depot::run_depot_downloader_interactive(
+                &dl.binary,
+                dl.app_id,
+                dl.depot_id,
+                &dl.manifest_id,
+                &dl.username,
+                &dl.cache_dir,
+            )
+            .await;
+            terminal = ratatui::init();
+
+            app.progress_rx = None;
+            app.wizard_state.is_downloading = false;
+
+            match dl_result {
+                Ok(()) => finalize_downgrade_from(&mut app, dl),
+                Err(e) => {
+                    app.wizard_state.error = Some(format!("Download failed: {}", e));
+                }
+            }
+            continue;
+        }
+
+        // Poll progress channel for binary-download status lines and ready signal.
         let progress_msgs: Vec<rewind_core::depot::DepotProgress> = {
             if let Some(rx) = &mut app.progress_rx {
                 let mut msgs = Vec::new();
@@ -70,9 +93,38 @@ async fn run(
                 rewind_core::depot::DepotProgress::Line(line) => {
                     app.wizard_state.progress_lines.push(line);
                 }
+                rewind_core::depot::DepotProgress::ReadyToDownload { binary } => {
+                    // Binary is ready — build PendingDownload so the loop suspends the TUI.
+                    if let (Some(game), Some(username)) = (
+                        app.selected_game().cloned(),
+                        app.config.steam_username.clone(),
+                    ) {
+                        if let Ok(cache_root) = config::cache_dir() {
+                            let manifest_id = app.wizard_state.manifest_input.trim().to_string();
+                            let cache_dir = rewind_core::cache::manifest_cache_dir(
+                                &cache_root,
+                                game.app_id,
+                                game.depot_id,
+                                &manifest_id,
+                            );
+                            app.pending_download = Some(PendingDownload {
+                                binary,
+                                app_id: game.app_id,
+                                depot_id: game.depot_id,
+                                manifest_id,
+                                username,
+                                cache_dir,
+                                game_name: game.name.clone(),
+                                game_install_path: game.install_path.clone(),
+                                current_manifest_id: game.manifest_id.clone(),
+                                acf_path: game.acf_path.clone(),
+                            });
+                        }
+                    }
+                }
                 rewind_core::depot::DepotProgress::Done => {
+                    // Should not be reached (interactive path handles completion), but handle gracefully.
                     app.wizard_state.is_downloading = false;
-                    finalize_downgrade(&mut app);
                 }
                 rewind_core::depot::DepotProgress::Error(e) => {
                     app.wizard_state.is_downloading = false;
@@ -94,6 +146,7 @@ async fn run(
         }
     }
 
+    ratatui::restore();
     Ok(())
 }
 
@@ -208,9 +261,8 @@ async fn handle_wizard(app: &mut App, key: KeyCode) {
             }
         }
         KeyCode::Enter if !app.wizard_state.is_downloading => {
-            let manifest_id = app.wizard_state.manifest_input.trim().to_string();
-            if !manifest_id.is_empty() {
-                start_download(app, manifest_id).await;
+            if !app.wizard_state.manifest_input.trim().is_empty() {
+                start_download(app).await;
             }
         }
         _ => {}
@@ -307,17 +359,13 @@ fn handle_settings(app: &mut App, key: KeyCode) {
     }
 }
 
-async fn start_download(app: &mut App, manifest_id: String) {
-    let Some(game) = app.selected_game().cloned() else {
-        return;
-    };
-    let Some(username) = app.config.steam_username.clone() else {
+async fn start_download(app: &mut App) {
+    if app.config.steam_username.is_none() {
         app.wizard_state.error = Some("Steam username not set. Go to [S]ettings.".into());
         return;
     };
 
     let Ok(bin_dir) = config::bin_dir() else { return };
-    let Ok(cache_root) = config::cache_dir() else { return };
 
     // Check .NET runtime is available
     if !rewind_core::depot::check_dotnet().await {
@@ -327,40 +375,38 @@ async fn start_download(app: &mut App, manifest_id: String) {
         return;
     }
 
-    let (tx, rx) = mpsc::channel(100);
+    let (tx, rx) = mpsc::channel(10);
     app.progress_rx = Some(rx);
     app.wizard_state.is_downloading = true;
     app.wizard_state.progress_lines.clear();
     app.wizard_state.error = None;
 
-    let cache_dir = rewind_core::cache::manifest_cache_dir(
-        &cache_root,
-        game.app_id,
-        game.depot_id,
-        &manifest_id,
-    );
-
+    // Background task: locate/download the DepotDownloader binary.
+    // Once ready, signal the main loop via ReadyToDownload so it can suspend the TUI
+    // and run the download interactively (required for password / Steam Guard prompts).
     tokio::spawn(async move {
-        let binary = match rewind_core::depot::ensure_depot_downloader(&bin_dir).await {
-            Ok(b) => b,
+        let _ = tx
+            .send(rewind_core::depot::DepotProgress::Line(
+                "Locating DepotDownloader...".into(),
+            ))
+            .await;
+        match rewind_core::depot::ensure_depot_downloader(&bin_dir).await {
+            Ok(binary) => {
+                let _ = tx
+                    .send(rewind_core::depot::DepotProgress::Line(
+                        "DepotDownloader ready. Starting download...".into(),
+                    ))
+                    .await;
+                let _ = tx
+                    .send(rewind_core::depot::DepotProgress::ReadyToDownload { binary })
+                    .await;
+            }
             Err(e) => {
                 let _ = tx
                     .send(rewind_core::depot::DepotProgress::Error(e.to_string()))
                     .await;
-                return;
             }
-        };
-
-        let _ = rewind_core::depot::run_depot_downloader(
-            &binary,
-            game.app_id,
-            game.depot_id,
-            &manifest_id,
-            &username,
-            &cache_dir,
-            tx,
-        )
-        .await;
+        }
     });
 }
 
@@ -407,65 +453,65 @@ fn switch_to_cached_version(app: &mut App, manifest_id: String) {
     let _ = config::save_games(&app.games_config);
 }
 
-fn finalize_downgrade(app: &mut App) {
-    let Some(game) = app.selected_game().cloned() else {
-        return;
-    };
+fn finalize_downgrade_from(app: &mut App, dl: PendingDownload) {
     let Ok(cache_root) = config::cache_dir() else { return };
 
-    let manifest_id = app.wizard_state.manifest_input.trim().to_string();
-    if manifest_id.is_empty() {
-        return;
-    }
-
-    let target_cache =
-        rewind_core::cache::manifest_cache_dir(&cache_root, game.app_id, game.depot_id, &manifest_id);
+    let target_cache = rewind_core::cache::manifest_cache_dir(
+        &cache_root,
+        dl.app_id,
+        dl.depot_id,
+        &dl.manifest_id,
+    );
     let current_cache = rewind_core::cache::manifest_cache_dir(
         &cache_root,
-        game.app_id,
-        game.depot_id,
-        &game.manifest_id,
+        dl.app_id,
+        dl.depot_id,
+        &dl.current_manifest_id,
     );
 
     if let Err(e) =
-        rewind_core::cache::apply_downloaded(&game.install_path, &target_cache, &current_cache)
+        rewind_core::cache::apply_downloaded(&dl.game_install_path, &target_cache, &current_cache)
     {
         app.wizard_state.error = Some(format!("Failed to apply files: {}", e));
         return;
     }
 
-    let acf_path = game.acf_path.clone();
-
     let existing = app
         .games_config
         .games
         .iter_mut()
-        .find(|e| e.app_id == game.app_id);
+        .find(|e| e.app_id == dl.app_id);
 
     if let Some(entry) = existing {
-        entry.active_manifest_id = manifest_id.clone();
-        if !entry.cached_manifest_ids.contains(&manifest_id) {
-            entry.cached_manifest_ids.push(manifest_id.clone());
+        entry.active_manifest_id = dl.manifest_id.clone();
+        if !entry.cached_manifest_ids.contains(&dl.manifest_id) {
+            entry.cached_manifest_ids.push(dl.manifest_id.clone());
         }
-        if !entry.cached_manifest_ids.contains(&game.manifest_id) {
-            entry.cached_manifest_ids.push(game.manifest_id.clone());
+        if !entry.cached_manifest_ids.contains(&dl.current_manifest_id) {
+            entry.cached_manifest_ids.push(dl.current_manifest_id.clone());
         }
         entry.acf_locked = true;
     } else {
         app.games_config.games.push(rewind_core::config::GameEntry {
-            name: game.name.clone(),
-            app_id: game.app_id,
-            depot_id: game.depot_id,
-            install_path: game.install_path.clone(),
-            active_manifest_id: manifest_id.clone(),
-            latest_manifest_id: game.manifest_id.clone(),
-            cached_manifest_ids: vec![game.manifest_id.clone(), manifest_id.clone()],
+            name: dl.game_name.clone(),
+            app_id: dl.app_id,
+            depot_id: dl.depot_id,
+            install_path: dl.game_install_path.clone(),
+            active_manifest_id: dl.manifest_id.clone(),
+            latest_manifest_id: dl.current_manifest_id.clone(),
+            cached_manifest_ids: vec![dl.current_manifest_id.clone(), dl.manifest_id.clone()],
             acf_locked: true,
         });
     }
 
-    let _ = rewind_core::patcher::patch_acf_file(&acf_path, "0", &manifest_id, game.depot_id);
-    let _ = rewind_core::immutability::lock_file(&acf_path);
+    if let Err(e) =
+        rewind_core::patcher::patch_acf_file(&dl.acf_path, "0", &dl.manifest_id, dl.depot_id)
+    {
+        eprintln!("Warning: failed to patch ACF: {}", e);
+    }
+    if let Err(e) = rewind_core::immutability::lock_file(&dl.acf_path) {
+        eprintln!("Warning: failed to lock ACF: {}", e);
+    }
     let _ = config::save_games(&app.games_config);
 
     app.screen = Screen::Main;

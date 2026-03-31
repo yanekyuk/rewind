@@ -25,7 +25,10 @@ pub enum DepotError {
 /// A progress message sent over the mpsc channel during download.
 #[derive(Debug, Clone)]
 pub enum DepotProgress {
+    /// A status/info line to display while preparing the download.
     Line(String),
+    /// DepotDownloader binary is ready at this path; interactive download can start.
+    ReadyToDownload { binary: std::path::PathBuf },
     Done,
     Error(String),
 }
@@ -157,6 +160,31 @@ pub async fn ensure_depot_downloader(bin_dir: &Path) -> Result<PathBuf, DepotErr
         return Ok(path);
     }
     download_depot_downloader(bin_dir).await
+}
+
+/// Run DepotDownloader with inherited stdio (interactive — handles password/Steam Guard prompts).
+pub async fn run_depot_downloader_interactive(
+    binary: &Path,
+    app_id: u32,
+    depot_id: u32,
+    manifest_id: &str,
+    username: &str,
+    cache_dir: &Path,
+) -> Result<(), DepotError> {
+    std::fs::create_dir_all(cache_dir)?;
+    let args = build_args(
+        app_id,
+        depot_id,
+        manifest_id,
+        username,
+        cache_dir.to_string_lossy().as_ref(),
+    );
+    let status = Command::new(binary).args(&args).status().await?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(DepotError::ExitFailure(status.code().unwrap_or(-1)))
+    }
 }
 
 /// Run DepotDownloader and stream output lines via the given mpsc sender.
