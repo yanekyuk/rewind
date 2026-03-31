@@ -13,13 +13,8 @@
 //!
 //! # Submodules
 //!
-//! - [`auth`] — In-memory credential store for session-scoped authentication
-//!
-//! # Planned Submodules
-//!
-//! - Downgrade workflow (state machine for the 9-step process)
-//! - Progress tracking and event emission
-//! - Error aggregation and user-facing error construction
+//! - [`auth`] — Lightweight auth state tracker (logged-in status + username)
+//! - [`downgrade`] — Downgrade workflow orchestration
 
 pub mod auth;
 pub mod downgrade;

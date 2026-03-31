@@ -71,11 +71,57 @@ fn responses_to_ndjson(responses: &[SidecarResponse]) -> String {
         .join("\n")
 }
 
+/// Check for a saved sidecar session (RefreshToken on disk).
+///
+/// Sends a `check-session` command to the sidecar daemon. If a valid
+/// RefreshToken exists, the sidecar logs in silently and returns the
+/// username. Returns an error if no valid session exists.
+pub async fn check_session(handle: &SidecarHandle) -> Result<String, RewindError> {
+    let command = json!({
+        "command": "check-session",
+    });
+
+    eprintln!("[sidecar check-session] checking for saved session...");
+    let responses = send_command(handle, command).await?;
+    check_responses(&responses)?;
+
+    // Extract username from auth_success response
+    for resp in &responses {
+        if resp.msg_type == "auth_success" {
+            if let Some(username) = resp.value.get("username").and_then(|v| v.as_str()) {
+                eprintln!("[sidecar check-session] found session for {}", username);
+                return Ok(username.to_string());
+            }
+        }
+    }
+
+    Err(RewindError::AuthRequired(
+        "No valid saved session found".to_string(),
+    ))
+}
+
+/// Send a logout command to the sidecar daemon.
+///
+/// Disposes the current SteamSession. The sidecar will require a fresh
+/// `login` or `check-session` before accepting further commands.
+pub async fn logout(handle: &SidecarHandle) -> Result<(), RewindError> {
+    let command = json!({
+        "command": "logout",
+    });
+
+    eprintln!("[sidecar logout] sending logout command...");
+    let responses = send_command(handle, command).await?;
+    check_responses(&responses)?;
+    eprintln!("[sidecar logout] logged out");
+    Ok(())
+}
+
 /// Authenticate with Steam via the sidecar daemon.
 ///
 /// Sends a `login` command to the already-running sidecar daemon.
 /// On success, the sidecar's SteamSession stays authenticated for
-/// all subsequent commands — no re-auth needed.
+/// all subsequent commands -- no re-auth needed. The sidecar also
+/// persists a RefreshToken to disk for future silent logins.
 pub async fn login(handle: &SidecarHandle, credentials: &Credentials) -> Result<(), RewindError> {
     let mut command = json!({
         "command": "login",

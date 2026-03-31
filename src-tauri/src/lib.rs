@@ -9,10 +9,7 @@ use tauri::Emitter;
 use tauri::Manager;
 use tauri::webview::WebviewWindowBuilder;
 
-use application::auth::{
-    clear_saved_username, delete_from_keychain, load_from_keychain, load_username, save_to_keychain,
-    save_username, AuthStore,
-};
+use application::auth::AuthState;
 use application::downgrade::{run_downgrade, DowngradeServices};
 use domain::auth::Credentials;
 use domain::downgrade::{DowngradeParams, DowngradeProgress};
@@ -128,15 +125,15 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-/// Authenticate with Steam and store credentials for the session.
+/// Authenticate with Steam via the sidecar daemon.
 ///
-/// Spawns the SteamKit sidecar `login` command to perform actual Steam
-/// authentication (including phone approval / Steam Guard). On success,
-/// the sidecar persists a session token so subsequent commands skip auth.
+/// Sends a `login` command to the SteamKit sidecar with the provided
+/// credentials. On success, the sidecar persists a RefreshToken so
+/// subsequent app starts can use `check_session` for silent login.
 #[tauri::command]
-async fn set_credentials(
+async fn login(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AuthStore>,
+    state: tauri::State<'_, AuthState>,
     sidecar_state: tauri::State<'_, SidecarState>,
     username: String,
     password: String,
@@ -148,86 +145,65 @@ async fn set_credentials(
         guard_code,
     };
 
-    // Actually authenticate with Steam via the sidecar daemon
-    eprintln!("[set_credentials] authenticating with Steam...");
+    eprintln!("[login] authenticating with Steam...");
     let sidecar = sidecar_state.get(&app).await?;
     depot_downloader::login(sidecar, &credentials).await?;
-    eprintln!("[set_credentials] authentication successful");
+    eprintln!("[login] authentication successful");
 
-    save_username(&credentials.username);
-    if !credentials.password.is_empty() {
-        save_to_keychain(&credentials.username, &credentials.password);
-    }
-    state
-        .set(credentials)
-        .map_err(|e| RewindError::AuthFailed(e.to_string()))?;
+    state.set_logged_in(&credentials.username);
     Ok(())
 }
 
-/// Resume a session using credentials already stored in the AuthStore.
+/// Check for an existing sidecar session (saved RefreshToken).
 ///
-/// Used by the "Welcome back" flow when the frontend detects stored credentials.
-/// Instead of passing an empty password across the IPC boundary (which would fail
-/// validation and not work when the sidecar session expires), this command reads
-/// the real password from the AuthStore (loaded from the OS keychain at startup)
-/// and uses it to authenticate with the sidecar.
-///
-/// If the sidecar session token is still valid, this succeeds immediately.
-/// If the session expired, the stored password is used for re-authentication,
-/// avoiding the need for the user to re-enter their password.
+/// Sends a `check-session` command to the sidecar. If a valid RefreshToken
+/// exists on disk, the sidecar logs in silently and returns the username.
+/// The frontend calls this on mount to skip the login screen.
 #[tauri::command]
-async fn resume_session(
+async fn check_session(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AuthStore>,
+    state: tauri::State<'_, AuthState>,
     sidecar_state: tauri::State<'_, SidecarState>,
-) -> Result<(), RewindError> {
-    let credentials = state.get().ok_or_else(|| {
-        RewindError::AuthRequired("No stored credentials available. Please sign in.".to_string())
-    })?;
-
-    eprintln!("[resume_session] authenticating with stored credentials...");
+) -> Result<Option<String>, RewindError> {
+    eprintln!("[check_session] checking for saved session...");
     let sidecar = sidecar_state.get(&app).await?;
-    depot_downloader::login(sidecar, &credentials).await?;
-    eprintln!("[resume_session] authentication successful");
-
-    Ok(())
+    match depot_downloader::check_session(sidecar).await {
+        Ok(username) => {
+            eprintln!("[check_session] silent login successful for {}", username);
+            state.set_logged_in(&username);
+            Ok(Some(username))
+        }
+        Err(_) => {
+            eprintln!("[check_session] no valid session found");
+            Ok(None)
+        }
+    }
 }
 
-/// Check whether the user has an active or saved session.
-///
-/// Returns `true` if credentials are available this session OR if a
-/// username was saved from a previous session (sidecar session may still be valid).
+/// Check whether the user has an active authenticated session.
 #[tauri::command]
-fn get_auth_state(state: tauri::State<'_, AuthStore>) -> bool {
-    state.is_set() || state.has_saved_session()
+fn get_auth_state(state: tauri::State<'_, AuthState>) -> bool {
+    state.is_logged_in()
 }
 
-/// Return the username of the authenticated or saved user, if any.
+/// Return the username of the authenticated user, if any.
 #[tauri::command]
-fn get_username(state: tauri::State<'_, AuthStore>) -> Option<String> {
+fn get_username(state: tauri::State<'_, AuthState>) -> Option<String> {
     state.username()
 }
 
-/// Check whether full credentials (username + password) are stored.
-///
-/// Returns `true` if the password was loaded from the OS keychain on startup
-/// or if credentials were set during this session. Used by the frontend to
-/// show the "Welcome back" UI.
+/// Log out: send logout to the sidecar and clear local auth state.
 #[tauri::command]
-fn has_credentials(state: tauri::State<'_, AuthStore>) -> bool {
-    state.has_stored_password()
-}
-
-/// Remove credentials from memory, saved username from disk, and password
-/// from the OS keychain.
-#[tauri::command]
-fn clear_credentials(state: tauri::State<'_, AuthStore>) {
-    // Get the username before clearing so we can delete from keychain
-    if let Some(username) = state.username() {
-        delete_from_keychain(&username);
+async fn logout(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AuthState>,
+    sidecar_state: tauri::State<'_, SidecarState>,
+) -> Result<(), RewindError> {
+    if let Ok(sidecar) = sidecar_state.get(&app).await {
+        let _ = depot_downloader::logout(sidecar).await;
     }
     state.clear();
-    clear_saved_username();
+    Ok(())
 }
 
 /// List all installed Steam games across all detected Steam library folders.
@@ -262,23 +238,33 @@ async fn list_games() -> Result<Vec<GameInfo>, RewindError> {
 /// Start the downgrade pipeline for a game.
 ///
 /// Orchestrates the full 4-phase downgrade workflow:
-/// 1. Comparing — fetch manifests, diff, generate filelist
-/// 2. Downloading — download changed files via SteamKit sidecar
-/// 3. Applying — copy files, delete removed, patch ACF, lock ACF
-/// 4. Complete — emit success or error event
+/// 1. Comparing -- fetch manifests, diff, generate filelist
+/// 2. Downloading -- download changed files via SteamKit sidecar
+/// 3. Applying -- copy files, delete removed, patch ACF, lock ACF
+/// 4. Complete -- emit success or error event
 ///
 /// Progress is emitted on the `downgrade-progress` Tauri event channel.
 /// The frontend should listen to this channel for real-time updates.
 #[tauri::command]
 async fn start_downgrade(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AuthStore>,
+    state: tauri::State<'_, AuthState>,
     sidecar_state: tauri::State<'_, SidecarState>,
     params: DowngradeParams,
 ) -> Result<(), RewindError> {
-    let credentials = state.get_or_saved().ok_or_else(|| {
-        RewindError::AuthRequired("No credentials available. Please sign in.".to_string())
-    })?;
+    if !state.is_logged_in() {
+        return Err(RewindError::AuthRequired(
+            "No authenticated session. Please sign in.".to_string(),
+        ));
+    }
+
+    // The sidecar is already authenticated; credentials are only needed
+    // as a placeholder for the DowngradeServices trait interface.
+    let credentials = Credentials {
+        username: state.username().unwrap_or_default(),
+        password: String::new(),
+        guard_code: None,
+    };
 
     eprintln!(
         "[start_downgrade] starting pipeline for app={} depot={} target={}",
@@ -307,21 +293,21 @@ async fn start_downgrade(
 
 /// List available manifests for a depot using the SteamKit sidecar.
 ///
-/// Uses full credentials if available, or falls back to the saved username
-/// (with empty password) to let the sidecar attempt session-token auth.
-/// If the sidecar reports AUTH_REQUIRED (no saved session and no password),
-/// returns `RewindError::AuthRequired` so the frontend shows the login form.
+/// Requires an active sidecar session (login or check_session must
+/// have succeeded). Returns `AuthRequired` if not logged in.
 #[tauri::command]
 async fn list_manifests(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AuthStore>,
+    state: tauri::State<'_, AuthState>,
     sidecar_state: tauri::State<'_, SidecarState>,
     app_id: String,
     depot_id: String,
 ) -> Result<Vec<ManifestListEntry>, RewindError> {
-    let _credentials = state.get_or_saved().ok_or_else(|| {
-        RewindError::AuthRequired("No credentials available. Please sign in.".to_string())
-    })?;
+    if !state.is_logged_in() {
+        return Err(RewindError::AuthRequired(
+            "No authenticated session. Please sign in.".to_string(),
+        ));
+    }
     let sidecar = sidecar_state.get(&app).await?;
     eprintln!("[list_manifests] sending command for app={} depot={}", app_id, depot_id);
     let start = std::time::Instant::now();
@@ -334,18 +320,19 @@ async fn list_manifests(
 ///
 /// Queries Steam's PICS API to enumerate every depot for the given app,
 /// returning metadata (name, max size, DLC app ID) for each.
-/// Uses full credentials if available, or falls back to the saved username
-/// (with empty password) to let the sidecar attempt session-token auth.
+/// Requires an active sidecar session.
 #[tauri::command]
 async fn list_depots(
     app: tauri::AppHandle,
-    state: tauri::State<'_, AuthStore>,
+    state: tauri::State<'_, AuthState>,
     sidecar_state: tauri::State<'_, SidecarState>,
     app_id: String,
 ) -> Result<Vec<SteamDepotInfo>, RewindError> {
-    let _credentials = state.get_or_saved().ok_or_else(|| {
-        RewindError::AuthRequired("No credentials available. Please sign in.".to_string())
-    })?;
+    if !state.is_logged_in() {
+        return Err(RewindError::AuthRequired(
+            "No authenticated session. Please sign in.".to_string(),
+        ));
+    }
     let sidecar = sidecar_state.get(&app).await?;
     eprintln!("[list_depots] sending command for app={}", app_id);
     let start = std::time::Instant::now();
@@ -473,16 +460,10 @@ async fn close_steamdb_webview(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let saved_username = load_username();
-    let saved_password = saved_username
-        .as_deref()
-        .and_then(load_from_keychain);
-    let auth_store = AuthStore::with_saved_credentials(saved_username, saved_password);
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(auth_store)
+        .manage(AuthState::default())
         .manage(SidecarState::new())
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -490,12 +471,11 @@ pub fn run() {
             list_depots,
             list_manifests,
             start_downgrade,
-            set_credentials,
-            resume_session,
+            login,
+            check_session,
             get_auth_state,
             get_username,
-            has_credentials,
-            clear_credentials,
+            logout,
             open_steamdb_webview,
             close_steamdb_webview,
         ])
