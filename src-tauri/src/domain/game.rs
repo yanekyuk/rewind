@@ -72,14 +72,7 @@ impl GameInfo {
         depots.sort_by(|a, b| a.depot_id.cmp(&b.depot_id));
 
         let state_flags: u32 = app_state.state_flags.parse().unwrap_or(0);
-        let update_pending = app_state
-            .target_build_id
-            .as_ref()
-            .map_or(false, |t| t != &app_state.buildid)
-            || app_state
-                .bytes_to_download
-                .as_ref()
-                .map_or(false, |b| b != "0");
+        let update_pending = state_flags & 2 != 0;
 
         let size_on_disk: u64 = app_state
             .size_on_disk
