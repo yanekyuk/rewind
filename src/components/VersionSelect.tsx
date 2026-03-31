@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useManifestList } from "../hooks/useManifestList";
+import { useStartDowngrade } from "../hooks/useStartDowngrade";
 import type { GameInfo } from "../types/game";
 import { Lock } from "lucide-react";
 
@@ -30,6 +31,7 @@ export function VersionSelect({
   const { manifests, loading, error, fetch } = useManifestList(undefined, {
     onAuthRequired,
   });
+  const { starting: startingDowngrade, start: startDowngrade } = useStartDowngrade();
   const [manualId, setManualId] = useState("");
 
   // Use the provided depot ID, falling back to the first installed depot
@@ -49,12 +51,27 @@ export function VersionSelect({
     }
   };
 
-  const handleManualSubmit = () => {
+  const handleManualSubmit = useCallback(async () => {
     const trimmed = manualId.trim();
     if (trimmed) {
+      const depot = game.depots[0];
+      const steamappsPath = game.install_path.split("steamapps")[0] + "steamapps";
+
+      await startDowngrade({
+        app_id: game.appid,
+        depot_id: depot?.depot_id ?? "",
+        target_manifest_id: trimmed,
+        current_manifest_id: depot?.manifest ?? "",
+        latest_buildid: game.buildid,
+        latest_manifest_id: depot?.manifest ?? "",
+        latest_size: depot?.size ?? "0",
+        install_path: game.install_path,
+        steamapps_path: steamappsPath,
+      });
+
       onSelectManifest(trimmed);
     }
-  };
+  }, [manualId, game, onSelectManifest, startDowngrade]);
 
   return (
     <div className="version-select">
@@ -114,12 +131,32 @@ export function VersionSelect({
                 .filter(Boolean)
                 .join(" ");
 
+              const handleRowClick = async () => {
+                const depot = game.depots[0];
+                const steamappsPath = game.install_path.split("steamapps")[0] + "steamapps";
+
+                await startDowngrade({
+                  app_id: game.appid,
+                  depot_id: depot?.depot_id ?? "",
+                  target_manifest_id: entry.manifest_id,
+                  current_manifest_id: currentManifestId,
+                  latest_buildid: game.buildid,
+                  latest_manifest_id: depot?.manifest ?? "",
+                  latest_size: depot?.size ?? "0",
+                  install_path: game.install_path,
+                  steamapps_path: steamappsPath,
+                });
+
+                onSelectManifest(entry.manifest_id);
+              };
+
               return (
                 <button
                   key={entry.manifest_id}
                   className={classes}
-                  onClick={() => onSelectManifest(entry.manifest_id)}
+                  onClick={handleRowClick}
                   type="button"
+                  disabled={startingDowngrade}
                 >
                   <div className="version-row__info">
                     <span className="version-row__branch">

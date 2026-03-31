@@ -1,10 +1,11 @@
 /**
  * View identifiers for the Steam UI navigation model.
  *
- * Navigation flow: auth-gate -> game-library -> game-detail -> version-select
+ * Navigation flow: auth-gate -> game-library -> game-detail -> version-select -> downgrade
  */
 export type ViewId =
   | "auth-gate"
   | "game-library"
   | "game-detail"
-  | "version-select";
+  | "version-select"
+  | "downgrade";
