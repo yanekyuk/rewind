@@ -1,510 +1,260 @@
 //! SteamKit sidecar manifest and depot operations.
 //!
-//! Higher-level operations that use the sidecar helper to spawn the SteamKit
-//! sidecar and parse its JSON output. Each function handles argument construction,
-//! output collection, and parsing.
+//! Higher-level operations that send commands to the persistent sidecar daemon
+//! and parse its NDJSON responses. Each function constructs a JSON command,
+//! sends it via the sidecar handle, and parses the response.
 
+use serde_json::json;
 use tauri::AppHandle;
 use tauri::Emitter;
-use tauri_plugin_shell::process::CommandEvent;
 
 use crate::domain::auth::Credentials;
 use crate::domain::downgrade::DowngradeProgress;
 use crate::domain::game::SteamDepotInfo;
-use crate::domain::manifest::{parse_depot_list, parse_manifest_json, parse_manifest_list, DepotManifest, ManifestListEntry};
+use crate::domain::manifest::{
+    parse_depot_list, parse_manifest_json, parse_manifest_list, DepotManifest, ManifestListEntry,
+};
 use crate::error::RewindError;
 
-use super::sidecar::spawn_sidecar;
+use super::sidecar::{send_command, send_command_streaming, SidecarHandle, SidecarResponse};
 
-/// Extract a human-readable error message from sidecar NDJSON stderr.
+/// Check responses for errors and map to the appropriate `RewindError`.
 ///
-/// The sidecar emits errors as JSON lines like:
-/// `{"type":"error","code":"AUTH_ERROR","message":"Authentication failed with result RateLimitExceeded."}`
-///
-/// This function parses each line and returns the last `message` field found,
-/// falling back to the raw text if parsing fails.
-fn extract_sidecar_error(stderr: &str) -> String {
-    let mut last_message: Option<String> = None;
-    for line in stderr.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            if let Some(msg) = parsed.get("message").and_then(|v| v.as_str()) {
-                last_message = Some(msg.to_string());
+/// Scans all responses for "error" type messages and checks the "done"
+/// message for success. Auth-related error codes are mapped to specific
+/// error variants so the frontend can show the appropriate UI.
+fn check_responses(responses: &[SidecarResponse]) -> Result<(), RewindError> {
+    for resp in responses {
+        if resp.msg_type == "error" {
+            let code = resp
+                .value
+                .get("code")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let message = resp
+                .value
+                .get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("Unknown error");
+            if code == "AUTH_REQUIRED" {
+                return Err(RewindError::AuthRequired(
+                    "Session expired. Please sign in again.".to_string(),
+                ));
             }
-        }
-    }
-    last_message.unwrap_or_else(|| stderr.trim().to_string())
-}
-
-/// Authenticate with Steam via the SteamKit sidecar.
-///
-/// Spawns the sidecar `login` command which handles the full auth flow
-/// including Steam Guard / phone approval. On success, the sidecar saves
-/// a session token so subsequent commands can reuse it.
-pub async fn login(
-    app: &AppHandle,
-    credentials: &Credentials,
-) -> Result<(), RewindError> {
-    let mut args = vec!["login".to_string()];
-    args.extend(build_credential_args(credentials));
-
-    let (mut rx, _child) =
-        spawn_sidecar(app, args).map_err(|e| {
-            RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
-        })?;
-
-    let mut stderr_buffer = String::new();
-
-    eprintln!("[sidecar login] waiting for events...");
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar login stdout] {}", line.trim());
-                }
+            if code == "AUTH_FAILED" || code == "AUTH_ERROR" {
+                return Err(RewindError::AuthFailed(message.to_string()));
             }
-            CommandEvent::Stderr(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar login stderr] {}", line.trim());
-                    stderr_buffer.push_str(&line);
-                }
-            }
-            CommandEvent::Terminated(payload) => {
-                eprintln!("[sidecar login] terminated with code {:?}", payload.code);
-                if payload.code != Some(0) {
-                    let detail = if stderr_buffer.is_empty() {
-                        "Steam authentication failed".to_string()
-                    } else {
-                        extract_sidecar_error(&stderr_buffer)
-                    };
-                    return Err(RewindError::AuthFailed(detail));
-                }
-                break;
-            }
-            _ => {}
+            return Err(RewindError::Infrastructure(message.to_string()));
         }
     }
-
+    if let Some(done) = responses.iter().find(|r| r.msg_type == "done") {
+        if done.value.get("success").and_then(|v| v.as_bool()) != Some(true) {
+            return Err(RewindError::Infrastructure(
+                "Sidecar command failed".to_string(),
+            ));
+        }
+    }
     Ok(())
 }
 
-/// List all depots for an app using the SteamKit sidecar.
+/// Convert sidecar responses to NDJSON string for existing domain parsers.
 ///
-/// Spawns the SteamKit sidecar with the `list-depots` command to enumerate
-/// all depots for a given app from Steam's PICS data. Returns depot metadata
-/// including name, max size, and DLC app ID where available.
-///
-/// # Arguments
-///
-/// * `app` - Tauri application handle (needed to resolve the sidecar binary)
-/// * `app_id` - Steam application ID
-/// * `credentials` - Steam credentials (username, password, optional 2FA code)
-///
-/// # Errors
-///
-/// Returns `RewindError::Infrastructure` if the sidecar cannot be spawned
-/// or if the process exits with an error.
-/// Returns `RewindError::AuthRequired` if authentication is needed.
-pub async fn list_depots(
-    app: &AppHandle,
-    app_id: &str,
-    credentials: &Credentials,
-) -> Result<Vec<SteamDepotInfo>, RewindError> {
-    let mut args = vec!["list-depots".to_string()];
-    args.extend(build_credential_args(credentials));
-    args.extend([
-        "--app".to_string(),
-        app_id.to_string(),
-    ]);
-
-    let (mut rx, _child) =
-        spawn_sidecar(app, args).map_err(|e| {
-            RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
-        })?;
-
-    let mut stdout_buffer = String::new();
-    let mut stderr_buffer = String::new();
-
-    eprintln!("[sidecar list-depots] listing depots for app={}", app_id);
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar list-depots stdout] {}", line.trim());
-                    stdout_buffer.push_str(&line);
-                }
-            }
-            CommandEvent::Stderr(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar list-depots stderr] {}", line.trim());
-                    stderr_buffer.push_str(&line);
-                }
-            }
-            CommandEvent::Terminated(payload) => {
-                eprintln!("[sidecar list-depots] terminated with code {:?}", payload.code);
-                if payload.code != Some(0) {
-                    if is_auth_required_error(&stderr_buffer) {
-                        return Err(RewindError::AuthRequired(
-                            "Session expired. Please sign in again.".to_string(),
-                        ));
-                    }
-                    let detail = if stderr_buffer.is_empty() {
-                        format!(
-                            "SteamKit sidecar exited with code {:?}",
-                            payload.code
-                        )
-                    } else {
-                        extract_sidecar_error(&stderr_buffer)
-                    };
-                    return Err(RewindError::Infrastructure(detail));
-                }
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    let entries = parse_depot_list(&stdout_buffer);
-    Ok(entries)
+/// Filters out control messages (done, log, error) and serializes
+/// data responses back to JSON lines. This allows reuse of the existing
+/// `parse_depot_list`, `parse_manifest_list`, etc. parsers unchanged.
+fn responses_to_ndjson(responses: &[SidecarResponse]) -> String {
+    responses
+        .iter()
+        .filter(|r| r.msg_type != "done" && r.msg_type != "log" && r.msg_type != "error")
+        .filter_map(|r| serde_json::to_string(&r.value).ok())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
-/// List available manifests for a depot using the SteamKit sidecar.
+/// Authenticate with Steam via the sidecar daemon.
 ///
-/// Spawns the SteamKit sidecar with stored credentials to fetch the manifest
-/// history for the specified app and depot. Collects stdout (newline-delimited JSON)
-/// and parses manifest entries from the output.
-///
-/// # Arguments
-///
-/// * `app` - Tauri application handle (needed to resolve the sidecar binary)
-/// * `app_id` - Steam application ID
-/// * `depot_id` - Steam depot ID
-/// * `credentials` - Steam credentials (username, password, optional 2FA code)
-///
-/// # Errors
-///
-/// Returns `RewindError::Infrastructure` if the sidecar cannot be spawned
-/// or if the process exits with an error.
-pub async fn list_manifests(
-    app: &AppHandle,
-    app_id: &str,
-    depot_id: &str,
-    credentials: &Credentials,
-) -> Result<Vec<ManifestListEntry>, RewindError> {
-    let mut args = vec!["list-manifests".to_string()];
-    args.extend(build_credential_args(credentials));
-    args.extend([
-        "--app".to_string(),
-        app_id.to_string(),
-        "--depot".to_string(),
-        depot_id.to_string(),
-    ]);
-
-    let (mut rx, _child) =
-        spawn_sidecar(app, args).map_err(|e| {
-            RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
-        })?;
-
-    let mut stdout_buffer = String::new();
-    let mut stderr_buffer = String::new();
-
-    eprintln!("[sidecar] waiting for events...");
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar stdout] {}", line.trim());
-                    stdout_buffer.push_str(&line);
-                }
-            }
-            CommandEvent::Stderr(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar stderr] {}", line.trim());
-                    stderr_buffer.push_str(&line);
-                }
-            }
-            CommandEvent::Terminated(payload) => {
-                eprintln!("[sidecar] terminated with code {:?}", payload.code);
-                if payload.code != Some(0) {
-                    // Check for AUTH_REQUIRED — sidecar had no saved session
-                    // and no password was provided
-                    if is_auth_required_error(&stderr_buffer) {
-                        return Err(RewindError::AuthRequired(
-                            "Session expired. Please sign in again.".to_string(),
-                        ));
-                    }
-                    let detail = if stderr_buffer.is_empty() {
-                        format!(
-                            "SteamKit sidecar exited with code {:?}",
-                            payload.code
-                        )
-                    } else {
-                        extract_sidecar_error(&stderr_buffer)
-                    };
-                    return Err(RewindError::Infrastructure(detail));
-                }
-                break;
-            }
-            _ => {}
-        }
+/// Sends a `login` command to the already-running sidecar daemon.
+/// On success, the sidecar's SteamSession stays authenticated for
+/// all subsequent commands — no re-auth needed.
+pub async fn login(handle: &SidecarHandle, credentials: &Credentials) -> Result<(), RewindError> {
+    let mut command = json!({
+        "command": "login",
+        "username": credentials.username,
+        "password": credentials.password,
+    });
+    if let Some(ref code) = credentials.guard_code {
+        command
+            .as_object_mut()
+            .unwrap()
+            .insert("guard_code".to_string(), json!(code));
     }
 
-    // Parse newline-delimited JSON from stdout
-    let entries = parse_manifest_list(&stdout_buffer);
-    Ok(entries)
+    eprintln!("[sidecar login] sending login command...");
+    let responses = send_command(handle, command).await?;
+    check_responses(&responses)?;
+    eprintln!("[sidecar login] authentication successful");
+    Ok(())
+}
+
+/// List all depots for an app using the sidecar daemon.
+///
+/// Sends a `list-depots` command and parses the response into
+/// depot metadata (name, max size, DLC app ID).
+pub async fn list_depots(
+    handle: &SidecarHandle,
+    app_id: &str,
+) -> Result<Vec<SteamDepotInfo>, RewindError> {
+    let app_id_num: u64 = app_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid app_id: {}", app_id)))?;
+    let command = json!({
+        "command": "list-depots",
+        "app_id": app_id_num,
+    });
+
+    eprintln!("[sidecar list-depots] listing depots for app={}", app_id);
+    let responses = send_command(handle, command).await?;
+    check_responses(&responses)?;
+    let ndjson = responses_to_ndjson(&responses);
+    Ok(parse_depot_list(&ndjson))
+}
+
+/// List available manifests for a depot using the sidecar daemon.
+///
+/// Sends a `list-manifests` command and parses the response into
+/// manifest entries with timestamps and branch info.
+pub async fn list_manifests(
+    handle: &SidecarHandle,
+    app_id: &str,
+    depot_id: &str,
+) -> Result<Vec<ManifestListEntry>, RewindError> {
+    let app_id_num: u64 = app_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid app_id: {}", app_id)))?;
+    let depot_id_num: u64 = depot_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid depot_id: {}", depot_id)))?;
+    let command = json!({
+        "command": "list-manifests",
+        "app_id": app_id_num,
+        "depot_id": depot_id_num,
+    });
+
+    eprintln!(
+        "[sidecar list-manifests] listing manifests for app={} depot={}",
+        app_id, depot_id
+    );
+    let responses = send_command(handle, command).await?;
+    check_responses(&responses)?;
+    let ndjson = responses_to_ndjson(&responses);
+    Ok(parse_manifest_list(&ndjson))
 }
 
 /// Fetch manifest metadata for a specific depot manifest.
 ///
-/// Spawns the SteamKit sidecar with the `get-manifest` command to download
-/// and parse manifest metadata (file listings with SHA hashes, sizes, chunks).
-///
-/// # Arguments
-///
-/// * `app` - Tauri application handle
-/// * `app_id` - Steam application ID
-/// * `depot_id` - Steam depot ID
-/// * `manifest_id` - Target manifest ID to fetch
-/// * `credentials` - Steam credentials
+/// Sends a `get-manifest` command and parses the full manifest
+/// including file listings with SHA hashes, sizes, and chunks.
 pub async fn get_manifest(
-    app: &AppHandle,
+    handle: &SidecarHandle,
     app_id: &str,
     depot_id: &str,
     manifest_id: &str,
-    credentials: &Credentials,
 ) -> Result<DepotManifest, RewindError> {
-    let mut args = vec!["get-manifest".to_string()];
-    args.extend(build_credential_args(credentials));
-    args.extend([
-        "--app".to_string(),
-        app_id.to_string(),
-        "--depot".to_string(),
-        depot_id.to_string(),
-        "--manifest".to_string(),
-        manifest_id.to_string(),
-    ]);
-
-    let (mut rx, _child) = spawn_sidecar(app, args).map_err(|e| {
-        RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
-    })?;
-
-    let mut stdout_buffer = String::new();
-    let mut stderr_buffer = String::new();
+    let app_id_num: u64 = app_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid app_id: {}", app_id)))?;
+    let depot_id_num: u64 = depot_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid depot_id: {}", depot_id)))?;
+    let manifest_id_num: u64 = manifest_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid manifest_id: {}", manifest_id)))?;
+    let command = json!({
+        "command": "get-manifest",
+        "app_id": app_id_num,
+        "depot_id": depot_id_num,
+        "manifest_id": manifest_id_num,
+    });
 
     eprintln!(
         "[sidecar get-manifest] fetching manifest {} for depot {}",
         manifest_id, depot_id
     );
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar get-manifest stdout] {}", line.trim());
-                    stdout_buffer.push_str(&line);
-                }
-            }
-            CommandEvent::Stderr(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar get-manifest stderr] {}", line.trim());
-                    stderr_buffer.push_str(&line);
-                }
-            }
-            CommandEvent::Terminated(payload) => {
-                eprintln!(
-                    "[sidecar get-manifest] terminated with code {:?}",
-                    payload.code
-                );
-                if payload.code != Some(0) {
-                    if is_auth_required_error(&stderr_buffer) {
-                        return Err(RewindError::AuthRequired(
-                            "Session expired. Please sign in again.".to_string(),
-                        ));
-                    }
-                    let detail = if stderr_buffer.is_empty() {
-                        format!(
-                            "SteamKit sidecar exited with code {:?}",
-                            payload.code
-                        )
-                    } else {
-                        extract_sidecar_error(&stderr_buffer)
-                    };
-                    return Err(RewindError::Infrastructure(detail));
-                }
-                break;
-            }
-            _ => {}
-        }
-    }
-
-    parse_manifest_json(&stdout_buffer).map_err(|e| {
-        RewindError::Infrastructure(format!("Failed to parse manifest output: {}", e))
-    })
+    let responses = send_command(handle, command).await?;
+    check_responses(&responses)?;
+    let ndjson = responses_to_ndjson(&responses);
+    parse_manifest_json(&ndjson)
+        .map_err(|e| RewindError::Infrastructure(format!("Failed to parse manifest output: {}", e)))
 }
 
-/// Download depot files using the SteamKit sidecar.
+/// Download depot files using the sidecar daemon.
 ///
-/// Spawns the sidecar `download` command with the specified filelist and target
-/// manifest ID. Streams progress events to the frontend via Tauri event emission
-/// on the `downgrade-progress` channel.
-///
-/// # Arguments
-///
-/// * `app` - Tauri application handle (also used for event emission)
-/// * `app_id` - Steam application ID
-/// * `depot_id` - Steam depot ID
-/// * `manifest_id` - Target manifest ID to download from
-/// * `output_dir` - Directory to write downloaded files to
-/// * `filelist_path` - Path to a file containing newline-separated file names
-/// * `credentials` - Steam credentials
+/// Sends a `download` command and streams progress events to the frontend
+/// via Tauri event emission on the `downgrade-progress` channel.
 pub async fn download(
+    handle: &SidecarHandle,
     app: &AppHandle,
     app_id: &str,
     depot_id: &str,
     manifest_id: &str,
     output_dir: &str,
     filelist_path: &str,
-    credentials: &Credentials,
 ) -> Result<(), RewindError> {
-    let mut args = vec!["download".to_string()];
-    args.extend(build_credential_args(credentials));
-    args.extend([
-        "--app".to_string(),
-        app_id.to_string(),
-        "--depot".to_string(),
-        depot_id.to_string(),
-        "--manifest".to_string(),
-        manifest_id.to_string(),
-        "--dir".to_string(),
-        output_dir.to_string(),
-        "--filelist".to_string(),
-        filelist_path.to_string(),
-    ]);
-
-    let (mut rx, _child) = spawn_sidecar(app, args).map_err(|e| {
-        RewindError::Infrastructure(format!("Failed to spawn SteamKit sidecar: {}", e))
-    })?;
-
-    let mut stderr_buffer = String::new();
+    let app_id_num: u64 = app_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid app_id: {}", app_id)))?;
+    let depot_id_num: u64 = depot_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid depot_id: {}", depot_id)))?;
+    let manifest_id_num: u64 = manifest_id
+        .parse()
+        .map_err(|_| RewindError::Infrastructure(format!("Invalid manifest_id: {}", manifest_id)))?;
+    let command = json!({
+        "command": "download",
+        "app_id": app_id_num,
+        "depot_id": depot_id_num,
+        "manifest_id": manifest_id_num,
+        "dir": output_dir,
+        "filelist": filelist_path,
+    });
 
     eprintln!(
         "[sidecar download] downloading manifest {} for depot {}",
         manifest_id, depot_id
     );
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    let trimmed = line.trim();
-                    eprintln!("[sidecar download stdout] {}", trimmed);
 
-                    // Try to parse progress events and forward to frontend
-                    if let Ok(progress) =
-                        serde_json::from_str::<serde_json::Value>(trimmed)
-                    {
-                        if progress.get("type").and_then(|t| t.as_str()) == Some("progress") {
-                            let percent = progress
-                                .get("percent")
-                                .and_then(|p| p.as_f64())
-                                .unwrap_or(0.0);
-                            let bytes_downloaded = progress
-                                .get("bytes_downloaded")
-                                .and_then(|b| b.as_u64())
-                                .unwrap_or(0);
-                            let bytes_total = progress
-                                .get("bytes_total")
-                                .and_then(|b| b.as_u64())
-                                .unwrap_or(0);
-
-                            let _ = app.emit(
-                                "downgrade-progress",
-                                DowngradeProgress::Downloading {
-                                    percent,
-                                    bytes_downloaded,
-                                    bytes_total,
-                                },
-                            );
-                        }
-                    }
-                }
-            }
-            CommandEvent::Stderr(data) => {
-                if let Ok(line) = String::from_utf8(data) {
-                    eprintln!("[sidecar download stderr] {}", line.trim());
-                    stderr_buffer.push_str(&line);
-                }
-            }
-            CommandEvent::Terminated(payload) => {
-                eprintln!(
-                    "[sidecar download] terminated with code {:?}",
-                    payload.code
-                );
-                if payload.code != Some(0) {
-                    if is_auth_required_error(&stderr_buffer) {
-                        return Err(RewindError::AuthRequired(
-                            "Session expired. Please sign in again.".to_string(),
-                        ));
-                    }
-                    let detail = if stderr_buffer.is_empty() {
-                        format!(
-                            "SteamKit sidecar download exited with code {:?}",
-                            payload.code
-                        )
-                    } else {
-                        extract_sidecar_error(&stderr_buffer)
-                    };
-                    return Err(RewindError::Infrastructure(detail));
-                }
-                break;
-            }
-            _ => {}
+    let app_clone = app.clone();
+    let responses = send_command_streaming(handle, command, |resp| {
+        if resp.msg_type == "progress" {
+            let percent = resp
+                .value
+                .get("percent")
+                .and_then(|p| p.as_f64())
+                .unwrap_or(0.0);
+            let bytes_downloaded = resp
+                .value
+                .get("bytes_downloaded")
+                .and_then(|b| b.as_u64())
+                .unwrap_or(0);
+            let bytes_total = resp
+                .value
+                .get("bytes_total")
+                .and_then(|b| b.as_u64())
+                .unwrap_or(0);
+            let _ = app_clone.emit(
+                "downgrade-progress",
+                DowngradeProgress::Downloading {
+                    percent,
+                    bytes_downloaded,
+                    bytes_total,
+                },
+            );
         }
-    }
+    })
+    .await?;
 
+    check_responses(&responses)?;
     Ok(())
-}
-
-/// Check whether a sidecar error indicates that authentication is required.
-///
-/// The sidecar emits `AUTH_REQUIRED` when it cannot authenticate because
-/// no saved session exists and no password was provided. This lets the Rust
-/// backend distinguish "need to re-login" from other sidecar failures.
-fn is_auth_required_error(stderr: &str) -> bool {
-    for line in stderr.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
-            if parsed.get("code").and_then(|v| v.as_str()) == Some("AUTH_REQUIRED") {
-                return true;
-            }
-        }
-    }
-    false
-}
-
-/// Build the credential CLI arguments for the sidecar.
-///
-/// Always includes `--username`. Only includes `--password` if the password
-/// is non-empty (i.e. full credentials are available). When password is empty,
-/// the sidecar will attempt to use a saved session token instead.
-fn build_credential_args(credentials: &Credentials) -> Vec<String> {
-    let mut args = vec![
-        "--username".to_string(),
-        credentials.username.clone(),
-    ];
-    if !credentials.password.is_empty() {
-        args.push("--password".to_string());
-        args.push(credentials.password.clone());
-    }
-    if let Some(ref code) = credentials.guard_code {
-        args.push("--guard-code".to_string());
-        args.push(code.clone());
-    }
-    args
 }
 
 #[cfg(test)]
@@ -512,67 +262,87 @@ mod tests {
     use super::*;
 
     #[test]
-    fn extract_sidecar_error_parses_json_message() {
-        let stderr = r#"{"type":"error","code":"AUTH_ERROR","message":"Authentication failed"}"#;
-        assert_eq!(extract_sidecar_error(stderr), "Authentication failed");
-    }
-
-    #[test]
-    fn extract_sidecar_error_falls_back_to_raw_text() {
-        let stderr = "some raw error";
-        assert_eq!(extract_sidecar_error(stderr), "some raw error");
-    }
-
-    #[test]
-    fn is_auth_required_error_detects_auth_required_code() {
-        let stderr = r#"{"type":"error","code":"AUTH_REQUIRED","message":"No saved session and no password provided"}"#;
-        assert!(is_auth_required_error(stderr));
-    }
-
-    #[test]
-    fn is_auth_required_error_ignores_other_codes() {
-        let stderr = r#"{"type":"error","code":"AUTH_ERROR","message":"Login failed"}"#;
-        assert!(!is_auth_required_error(stderr));
-    }
-
-    #[test]
-    fn is_auth_required_error_handles_empty_stderr() {
-        assert!(!is_auth_required_error(""));
-    }
-
-    #[test]
-    fn build_credential_args_includes_password_when_present() {
-        let creds = Credentials {
-            username: "user".to_string(),
-            password: "pass".to_string(),
-            guard_code: None,
+    fn check_responses_detects_auth_required() {
+        let resp = SidecarResponse {
+            value: serde_json::json!({"type": "error", "code": "AUTH_REQUIRED", "message": "Not logged in"}),
+            msg_type: "error".to_string(),
         };
-        let args = build_credential_args(&creds);
-        assert_eq!(args, vec!["--username", "user", "--password", "pass"]);
+        let result = check_responses(&[resp]);
+        assert!(matches!(result, Err(RewindError::AuthRequired(_))));
     }
 
     #[test]
-    fn build_credential_args_omits_password_when_empty() {
-        let creds = Credentials {
-            username: "user".to_string(),
-            password: "".to_string(),
-            guard_code: None,
+    fn check_responses_detects_auth_failed() {
+        let resp = SidecarResponse {
+            value: serde_json::json!({"type": "error", "code": "AUTH_FAILED", "message": "Bad password"}),
+            msg_type: "error".to_string(),
         };
-        let args = build_credential_args(&creds);
-        assert_eq!(args, vec!["--username", "user"]);
+        let result = check_responses(&[resp]);
+        assert!(matches!(result, Err(RewindError::AuthFailed(_))));
     }
 
     #[test]
-    fn build_credential_args_includes_guard_code() {
-        let creds = Credentials {
-            username: "user".to_string(),
-            password: "pass".to_string(),
-            guard_code: Some("ABC123".to_string()),
+    fn check_responses_detects_auth_error() {
+        let resp = SidecarResponse {
+            value: serde_json::json!({"type": "error", "code": "AUTH_ERROR", "message": "Rate limited"}),
+            msg_type: "error".to_string(),
         };
-        let args = build_credential_args(&creds);
-        assert_eq!(
-            args,
-            vec!["--username", "user", "--password", "pass", "--guard-code", "ABC123"]
-        );
+        let result = check_responses(&[resp]);
+        assert!(matches!(result, Err(RewindError::AuthFailed(_))));
+    }
+
+    #[test]
+    fn check_responses_detects_infrastructure_error() {
+        let resp = SidecarResponse {
+            value: serde_json::json!({"type": "error", "code": "STEAM_ERROR", "message": "Connection lost"}),
+            msg_type: "error".to_string(),
+        };
+        let result = check_responses(&[resp]);
+        assert!(matches!(result, Err(RewindError::Infrastructure(_))));
+    }
+
+    #[test]
+    fn check_responses_detects_done_failure() {
+        let resp = SidecarResponse {
+            value: serde_json::json!({"type": "done", "success": false}),
+            msg_type: "done".to_string(),
+        };
+        let result = check_responses(&[resp]);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn check_responses_passes_on_success() {
+        let data = SidecarResponse {
+            value: serde_json::json!({"type": "depot_list", "depots": []}),
+            msg_type: "depot_list".to_string(),
+        };
+        let done = SidecarResponse {
+            value: serde_json::json!({"type": "done", "success": true}),
+            msg_type: "done".to_string(),
+        };
+        assert!(check_responses(&[data, done]).is_ok());
+    }
+
+    #[test]
+    fn responses_to_ndjson_filters_control_messages() {
+        let responses = vec![
+            SidecarResponse {
+                value: serde_json::json!({"type": "log", "message": "info"}),
+                msg_type: "log".to_string(),
+            },
+            SidecarResponse {
+                value: serde_json::json!({"type": "depot_list", "depots": []}),
+                msg_type: "depot_list".to_string(),
+            },
+            SidecarResponse {
+                value: serde_json::json!({"type": "done", "success": true}),
+                msg_type: "done".to_string(),
+            },
+        ];
+        let ndjson = responses_to_ndjson(&responses);
+        assert!(ndjson.contains("depot_list"));
+        assert!(!ndjson.contains("\"done\""));
+        assert!(!ndjson.contains("\"log\""));
     }
 }
