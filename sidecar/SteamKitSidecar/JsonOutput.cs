@@ -89,7 +89,9 @@ public static class JsonOutput
 public class ManifestListItem
 {
     public string Id { get; set; } = "";
-    public string Date { get; set; } = "";
+    public string Branch { get; set; } = "";
+    public ulong? TimeUpdated { get; set; }
+    public bool? PwdRequired { get; set; }
 }
 
 public class ManifestMetadata
