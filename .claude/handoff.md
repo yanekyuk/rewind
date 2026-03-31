@@ -51,30 +51,64 @@ The auth system has 5 overlapping mechanisms that don't work together:
 The persistent sidecar (PR #25) requires a `login` command before any other command, but the app navigates to game detail and fires `list_depots`/`list_manifests` without logging in first. The "SteamClient instance must be connected" error in the screenshot confirms this.
 
 ### Solution
-Replace everything with a single auth path:
+Replace the 5-mechanism auth system with a two-tier approach: **SteamKit RefreshToken persistence (primary)** with **localStorage username+password as fallback**.
 
-**Storage:** Use Tauri's localStorage (frontend `window.localStorage`) to persist username and password. Add a "Remember me" checkbox — when checked, credentials persist across restarts; when unchecked, they're session-only.
+#### Primary: RefreshToken + GuardData persistence
+SteamKit's auth API (see `SteamKit/Samples/000_Authentication`) supports persistent sessions:
+- On successful login, SteamKit returns a `RefreshToken` (JWT) and `NewGuardData` (skips Steam Guard on next login)
+- Store these in the sidecar's data directory (e.g., `~/.config/rewind/tokens/<username>.json`)
+- On subsequent app starts, the sidecar loads the RefreshToken and uses it for `LogOnDetails.AccessToken` — no password or Steam Guard needed
+- Use `GenerateAccessTokenForAppAsync` (see `SteamKit/Samples/002_WebCookie`) to renew tokens before they expire during long sessions
+- Set `IsPersistentSession = true` and `ShouldRememberPassword = true` in `AuthSessionDetails`
 
-**Login flow:**
-1. User enters username + password (+ optional Steam Guard code)
-2. Frontend sends `login` IPC command to sidecar
-3. On success, if "remember me" is checked, save to localStorage
-4. Frontend stores credentials in React state for the session
+#### Fallback: localStorage credentials
+- If RefreshToken is missing or expired beyond renewal, fall back to username + password stored in frontend localStorage
+- "Remember me" checkbox in LoginView controls whether credentials persist in localStorage
+- Frontend reads localStorage on mount → if credentials exist, sends them to the sidecar `login` command for re-authentication
 
-**Sidecar commands:** The sidecar daemon's `login` command is called once after app start (or after credentials are entered). All subsequent commands (list_depots, list_manifests, etc.) use the already-authenticated sidecar session — no credentials needed per-command.
+#### Login flow:
+1. App starts → sidecar starts → sidecar checks for saved RefreshToken
+2. If valid RefreshToken exists → auto-login silently, frontend skips login screen
+3. If no token → frontend shows login form
+4. User enters username + password (+ optional Steam Guard code)
+5. Frontend sends `login` IPC command to sidecar
+6. Sidecar authenticates, stores RefreshToken + GuardData to disk
+7. If "remember me" checked, frontend also saves username + password to localStorage as fallback
+8. All subsequent sidecar commands use the authenticated session
+
+#### Sidecar commands:
+The sidecar daemon's `login` command is called once after app start. All subsequent commands (list_depots, list_manifests, etc.) use the already-authenticated session — no credentials needed per-command. The sidecar must be logged in before any other command is accepted.
 
 **What to remove:**
 - `keyring` crate dependency from Cargo.toml
 - `save_to_keychain`, `load_from_keychain`, `delete_from_keychain` functions
-- `save_username`, `load_username`, `clear_saved_username` (plaintext file)
-- `AuthStore` struct entirely (or simplify to just hold session state)
+- `save_username`, `load_username`, `clear_saved_username` (plaintext file on disk)
+- `AuthStore` struct entirely (or simplify to just track "is sidecar logged in" boolean)
 - `resume_session` IPC command
 - `has_credentials` IPC command
 - `get_or_saved()` method
-- The "Welcome back" flow in LoginView (replace with auto-login if localStorage has credentials)
+- The "Welcome back" flow in LoginView (replace with auto-login via RefreshToken)
 
 **What to add/change:**
-- Frontend localStorage read on mount → if credentials exist, auto-login to sidecar
-- "Remember me" checkbox in LoginView
-- Ensure sidecar `login` is called before any depot/manifest commands
-- Simplify IPC surface: `login`, `logout`, `get_auth_state` (just checks if sidecar is authenticated)
+- **Sidecar:** Implement `IsPersistentSession`/`ShouldRememberPassword` in SteamSession.cs login flow
+- **Sidecar:** Store RefreshToken + GuardData as JSON file per account in config dir
+- **Sidecar:** Add `check-session` command that checks if a valid RefreshToken exists and attempts silent login
+- **Sidecar:** On login success, return `{ logged_in: true, username: "..." }` so frontend knows auth state
+- **Frontend:** localStorage read on mount → if RefreshToken login fails and localStorage has credentials, auto-retry with password
+- **Frontend:** "Remember me" checkbox in LoginView
+- **Frontend:** Ensure sidecar `login` (or `check-session`) is called before navigating past auth gate
+- **IPC surface:** Simplify to `login`, `check_session`, `logout`, `get_auth_state`
+
+#### SteamKit reference (from Samples/000_Authentication):
+```csharp
+var authSession = await client.Authentication.BeginAuthSessionViaCredentialsAsync(new AuthSessionDetails {
+    Username = username,
+    Password = password,
+    IsPersistentSession = true,
+    GuardData = previouslyStoredGuardData, // skip Steam Guard if available
+    Authenticator = new UserConsoleAuthenticator(), // or custom for phone approval
+});
+// After polling:
+authSession.RefreshToken  // store this — JWT, use for future logins
+authSession.NewGuardData  // store this — skips Steam Guard next time
+```
