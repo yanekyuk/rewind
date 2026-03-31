@@ -153,7 +153,17 @@ sudo mv rewind /usr/local/bin/rewind
 
 **Windows** — Run `rewind` as Administrator. Symlink creation requires elevated privileges.
 
-**Linux** — ACF locking (`chattr +i`) works best with root or `CAP_LINUX_IMMUTABLE`. Without it, `rewind` falls back to read-only file permissions, which may not fully prevent Steam from overwriting files.
+**Linux** — Most features work without any special permissions. The one exception is **ACF locking**: `rewind` locks the game's manifest file to stop Steam from auto-updating over your downgraded version. This uses `chattr +i` under the hood, which requires a specific Linux privilege.
+
+You do **not** need to run `sudo rewind`. Instead, grant only the required privilege to the binary once:
+
+```sh
+sudo setcap cap_linux_immutable+ep /usr/local/bin/rewind
+```
+
+After that, `rewind` can lock and unlock ACF files without any further sudo usage.
+
+If you skip this step, `rewind` will still work but falls back to read-only file permissions for locking. This is weaker — Steam runs as your own user and can override read-only flags, meaning it may auto-update and overwrite your downgraded version.
 
 **macOS** — No special permissions required.
 
