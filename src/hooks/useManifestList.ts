@@ -1,8 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { ManifestListEntry } from "../types/manifest";
+import { isAuthRequiredError, extractErrorMessage } from "../utils/errors";
 
 type InvokeFn = typeof tauriInvoke;
+
+interface UseManifestListOptions {
+  onAuthRequired?: () => void;
+}
 
 interface UseManifestListResult {
   manifests: ManifestListEntry[];
@@ -11,7 +16,10 @@ interface UseManifestListResult {
   fetch: (appId: string, depotId: string) => void;
 }
 
-export function useManifestList(invoke: InvokeFn = tauriInvoke): UseManifestListResult {
+export function useManifestList(
+  invoke: InvokeFn = tauriInvoke,
+  options?: UseManifestListOptions,
+): UseManifestListResult {
   const [manifests, setManifests] = useState<ManifestListEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +52,11 @@ export function useManifestList(invoke: InvokeFn = tauriInvoke): UseManifestList
       })
       .catch((err) => {
         if (!cancelled) {
-          const message =
-            err instanceof Error ? err.message : String(err);
+          if (isAuthRequiredError(err)) {
+            options?.onAuthRequired?.();
+            return;
+          }
+          const message = extractErrorMessage(err);
           setError(message);
           setLoading(false);
         }
