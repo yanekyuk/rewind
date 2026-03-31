@@ -886,17 +886,31 @@
 }
 
 .game-detail__depot {
-  padding: 10px 14px;
+  padding: 12px 16px;
   background-color: rgba(0, 0, 0, 0.2);
   border-radius: 3px;
-  border-left: 3px solid rgba(255, 255, 255, 0.1);
+  border-left: 3px solid var(--color-accent);
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.game-detail__depot:hover {
+  background-color: rgba(0, 0, 0, 0.35);
+}
+
+.game-detail__depot--not-installed {
+  border-left-color: rgba(255, 255, 255, 0.08);
+  opacity: 0.75;
+}
+
+.game-detail__depot--not-installed:hover {
+  opacity: 1;
 }
 
 .game-detail__depot-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 
 .game-detail__depot-id {
@@ -905,15 +919,41 @@
   font-size: 13px;
 }
 
+.game-detail__depot-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .game-detail__depot-size {
   color: var(--color-text-muted);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.game-detail__depot-status {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.game-detail__depot-dlc {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+  background-color: var(--color-accent-dim);
+  padding: 2px 8px;
+  border-radius: 3px;
 }
 
 .game-detail__depot-detail {
   display: flex;
   gap: 8px;
   align-items: baseline;
+  margin-bottom: 8px;
 }
 
 .game-detail__depot-label {
@@ -928,6 +968,27 @@
   color: var(--color-text);
   font-variant-numeric: tabular-nums;
   font-family: monospace;
+}
+
+.game-detail__depot-browse {
+  padding: 6px 16px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border);
+  background-color: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.game-detail__depot-browse:hover {
+  background-color: var(--color-surface-light);
+  border-color: var(--color-accent);
+  color: var(--color-text-bright);
 }
 
 /* ==========================================================================

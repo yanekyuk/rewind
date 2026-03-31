@@ -203,4 +203,22 @@ describe("GameDetail", () => {
     // The DLC badge shows "DLC 3321470" in a .game-detail__depot-dlc element
     expect(screen.getByText(/DLC 3321470/)).toBeInTheDocument();
   });
+
+  it("depot cards have proper CSS class structure for styling", () => {
+    const { container } = render(
+      <GameDetail game={mockGame} onChangeVersion={mock()} />,
+    );
+
+    // All depots have the depot card class
+    const depotCards = container.querySelectorAll(".game-detail__depot");
+    expect(depotCards.length).toBe(3);
+
+    // Each depot has a badges container
+    const badgeContainers = container.querySelectorAll(".game-detail__depot-badges");
+    expect(badgeContainers.length).toBe(3);
+
+    // DLC badge has its own class
+    const dlcBadges = container.querySelectorAll(".game-detail__depot-dlc");
+    expect(dlcBadges.length).toBe(1);
+  });
 });
