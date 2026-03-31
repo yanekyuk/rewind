@@ -133,6 +133,55 @@ describe("useAuth", () => {
     expect(result.current.authenticated).toBe(true);
   });
 
+  // Hypothesis: The bug occurs because set_credentials ignores the keychain-loaded
+  // password in AuthStore, always using the password from IPC arguments. When the
+  // sidecar session expires, the empty password causes login failure. The fix adds a
+  // dedicated resume_session IPC command that uses the credentials already in AuthStore.
+  it("resumeSession calls resume_session IPC instead of set_credentials", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_auth_state") return Promise.resolve(true);
+      if (cmd === "get_username") return Promise.resolve("saveduser");
+      if (cmd === "has_credentials") return Promise.resolve(true);
+      if (cmd === "resume_session") return Promise.resolve();
+      return Promise.resolve();
+    });
+
+    const { result } = renderHook(() => useAuth(mockInvoke));
+    await waitFor(() => expect(result.current.checking).toBe(false));
+
+    expect(result.current.hasStoredCredentials).toBe(true);
+
+    await act(async () => {
+      await result.current.resumeSession();
+    });
+
+    // Should call resume_session, NOT set_credentials
+    expect(mockInvoke).toHaveBeenCalledWith("resume_session");
+    expect(result.current.authenticated).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("resumeSession sets error state on failure", async () => {
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "get_auth_state") return Promise.resolve(true);
+      if (cmd === "get_username") return Promise.resolve("saveduser");
+      if (cmd === "has_credentials") return Promise.resolve(true);
+      if (cmd === "resume_session") return Promise.reject("Session expired");
+      return Promise.resolve();
+    });
+
+    const { result } = renderHook(() => useAuth(mockInvoke));
+    await waitFor(() => expect(result.current.checking).toBe(false));
+
+    await act(async () => {
+      await result.current.resumeSession();
+    });
+
+    // authenticated stays true (credentials still exist), but error is set
+    // so the UI can show the error message on the "Welcome back" screen
+    expect(result.current.error).toBe("Session expired");
+  });
+
   it("clears previous error on new submission", async () => {
     mockInvoke
       .mockImplementation((cmd: string) => {
