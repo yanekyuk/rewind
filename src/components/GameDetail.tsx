@@ -31,29 +31,28 @@ export function GameDetail({ game, onChangeVersion }: GameDetailProps) {
           src={steamLogoUrl(game.appid)}
           alt={game.name}
           onError={(e) => {
-            // If no logo, hide it — the name will show in the info bar
             e.currentTarget.style.display = "none";
           }}
         />
-      </div>
 
-      <div className="game-detail__info-bar">
-        <button
-          className="game-detail__change-version"
-          onClick={onChangeVersion}
-          type="button"
-        >
-          Change Version
-        </button>
+        <div className="game-detail__info-bar">
+          <button
+            className="game-detail__change-version"
+            onClick={onChangeVersion}
+            type="button"
+          >
+            Change Version
+          </button>
 
-        <div className="game-detail__meta">
-          <div className="game-detail__meta-item">
-            <span className="game-detail__meta-label">App ID</span>
-            <span className="game-detail__meta-value">{game.appid}</span>
-          </div>
-          <div className="game-detail__meta-item">
-            <span className="game-detail__meta-label">Build ID</span>
-            <span className="game-detail__meta-value">{game.buildid}</span>
+          <div className="game-detail__meta">
+            <div className="game-detail__meta-item">
+              <span className="game-detail__meta-label">App ID</span>
+              <span className="game-detail__meta-value">{game.appid}</span>
+            </div>
+            <div className="game-detail__meta-item">
+              <span className="game-detail__meta-label">Build ID</span>
+              <span className="game-detail__meta-value">{game.buildid}</span>
+            </div>
           </div>
         </div>
       </div>

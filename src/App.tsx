@@ -66,21 +66,8 @@ function App() {
     return <LoginView auth={auth} />;
   }
 
-  // Card grid library view
-  if (currentView === "game-library") {
-    return (
-      <AppShell
-        username={auth.username ?? "Steam User"}
-        canGoBack={false}
-        onLibrary={handleBackToLibrary}
-        onSignOut={handleSignOut}
-      >
-        <GameLibrary onSelectGame={handleSelectGame} />
-      </AppShell>
-    );
-  }
+  const inGameView = currentView === "game-detail" || currentView === "version-select";
 
-  // Game detail / version select — sidebar + main panel
   return (
     <AppShell
       username={auth.username ?? "Steam User"}
@@ -90,26 +77,37 @@ function App() {
       onSignOut={handleSignOut}
     >
       <div className="library-layout">
-        <GameSidebar
-          selectedAppId={selectedGame?.appid ?? null}
-          onSelectGame={handleSelectGame}
-        />
-        <div className="library-layout__main">
-          {selectedGame && currentView === "game-detail" && (
-            <GameDetail
-              key={selectedGame.appid}
-              game={selectedGame}
-              onChangeVersion={handleChangeVersion}
-            />
-          )}
+        {/* Sidebar — slides in/out independently */}
+        <div className={`game-sidebar-wrap ${inGameView ? "game-sidebar-wrap--in" : ""}`}>
+          <GameSidebar
+            selectedAppId={selectedGame?.appid ?? null}
+            onSelectGame={handleSelectGame}
+          />
+        </div>
 
-          {selectedGame && currentView === "version-select" && (
-            <VersionSelect
-              game={selectedGame}
-              selectedManifestId={selectedManifestId}
-              onSelectManifest={setSelectedManifestId}
-            />
-          )}
+        {/* Main content area — views fade within this */}
+        <div className="library-layout__main">
+          <div className={`view-fade ${!inGameView ? "view-fade--visible" : ""}`}>
+            <GameLibrary onSelectGame={handleSelectGame} />
+          </div>
+
+          <div className={`view-fade ${inGameView ? "view-fade--visible" : ""}`}>
+            {selectedGame && currentView === "game-detail" && (
+              <GameDetail
+                key={selectedGame.appid}
+                game={selectedGame}
+                onChangeVersion={handleChangeVersion}
+              />
+            )}
+
+            {selectedGame && currentView === "version-select" && (
+              <VersionSelect
+                game={selectedGame}
+                selectedManifestId={selectedManifestId}
+                onSelectManifest={setSelectedManifestId}
+              />
+            )}
+          </div>
         </div>
       </div>
     </AppShell>
