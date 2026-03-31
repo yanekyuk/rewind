@@ -7,7 +7,10 @@ use std::path::Path;
 
 use tauri::Emitter;
 
-use application::auth::{clear_saved_username, load_username, save_username, AuthStore};
+use application::auth::{
+    clear_saved_username, delete_from_keychain, load_from_keychain, load_username, save_to_keychain,
+    save_username, AuthStore,
+};
 use application::downgrade::{run_downgrade, DowngradeServices};
 use domain::auth::Credentials;
 use domain::downgrade::{DowngradeParams, DowngradeProgress};
@@ -146,6 +149,7 @@ async fn set_credentials(
     eprintln!("[set_credentials] authentication successful");
 
     save_username(&credentials.username);
+    save_to_keychain(&credentials.username, &credentials.password);
     state
         .set(credentials)
         .map_err(|e| RewindError::AuthFailed(e.to_string()))?;
@@ -167,9 +171,24 @@ fn get_username(state: tauri::State<'_, AuthStore>) -> Option<String> {
     state.username()
 }
 
-/// Remove credentials from memory and saved username from disk.
+/// Check whether full credentials (username + password) are stored.
+///
+/// Returns `true` if the password was loaded from the OS keychain on startup
+/// or if credentials were set during this session. Used by the frontend to
+/// show the "Welcome back" UI.
+#[tauri::command]
+fn has_credentials(state: tauri::State<'_, AuthStore>) -> bool {
+    state.has_stored_password()
+}
+
+/// Remove credentials from memory, saved username from disk, and password
+/// from the OS keychain.
 #[tauri::command]
 fn clear_credentials(state: tauri::State<'_, AuthStore>) {
+    // Get the username before clearing so we can delete from keychain
+    if let Some(username) = state.username() {
+        delete_from_keychain(&username);
+    }
     state.clear();
     clear_saved_username();
 }
@@ -270,7 +289,10 @@ async fn list_manifests(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let saved_username = load_username();
-    let auth_store = AuthStore::with_saved_username(saved_username);
+    let saved_password = saved_username
+        .as_deref()
+        .and_then(load_from_keychain);
+    let auth_store = AuthStore::with_saved_credentials(saved_username, saved_password);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -284,6 +306,7 @@ pub fn run() {
             set_credentials,
             get_auth_state,
             get_username,
+            has_credentials,
             clear_credentials,
         ])
         .run(tauri::generate_context!())
