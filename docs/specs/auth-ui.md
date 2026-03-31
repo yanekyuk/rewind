@@ -41,7 +41,7 @@ Rewind collects Steam credentials (username, password, and optional Steam Guard 
 
 ## Constraints
 
-- Credentials (username/password) are stored in-memory only. The sidecar's session token file contains a refresh token, not the raw password.
+- Credentials (username/password) are stored in-memory during the session. The password is also persisted to the OS keychain for session restoration on restart (see `docs/specs/credential-storage.md`). The sidecar's session token file contains a refresh token, not the raw password.
 - Credentials must not appear in logs, debug output, or frontend state that could be inspected.
 - The `set_credentials` IPC command must validate that username and password are non-empty before storing.
 - The backend credential store must be thread-safe (protected by `Mutex` or equivalent).
