@@ -6,14 +6,18 @@ interface VersionSelectProps {
   game: GameInfo;
   selectedManifestId: string | null;
   onSelectManifest: (manifestId: string) => void;
+  onAuthRequired?: () => void;
 }
 
 export function VersionSelect({
   game,
   selectedManifestId,
   onSelectManifest,
+  onAuthRequired,
 }: VersionSelectProps) {
-  const { manifests, loading, error, fetch } = useManifestList();
+  const { manifests, loading, error, fetch } = useManifestList(undefined, {
+    onAuthRequired,
+  });
 
   const depot = game.depots[0];
   const depotId = depot?.depot_id ?? "";

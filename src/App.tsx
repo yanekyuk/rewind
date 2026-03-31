@@ -105,6 +105,7 @@ function App() {
                 game={selectedGame}
                 selectedManifestId={selectedManifestId}
                 onSelectManifest={setSelectedManifestId}
+                onAuthRequired={handleSignOut}
               />
             )}
           </div>

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { extractErrorMessage } from "../utils/errors";
 
 type InvokeFn = typeof tauriInvoke;
 
@@ -71,15 +72,7 @@ export function useAuth(invoke: InvokeFn = tauriInvoke): UseAuthResult {
         setUsername(username);
         setAuthenticated(true);
       } catch (err) {
-        const message =
-          err instanceof Error
-            ? err.message
-            : typeof err === "string"
-              ? err
-              : typeof err === "object" && err !== null
-                ? String(Object.values(err as Record<string, unknown>)[0] ?? JSON.stringify(err))
-                : String(err);
-        setError(message);
+        setError(extractErrorMessage(err));
       } finally {
         setSubmitting(false);
       }
