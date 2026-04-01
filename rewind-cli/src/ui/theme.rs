@@ -2,6 +2,7 @@ use ratatui::style::{Color, Modifier, Style};
 
 // Steam color palette
 pub const BASE_BG: Color = Color::Rgb(27, 40, 56);       // #1b2838
+#[allow(dead_code)]
 pub const PANEL_BG: Color = Color::Rgb(42, 71, 94);      // #2a475e
 pub const ACCENT: Color = Color::Rgb(102, 192, 244);      // #66c0f4
 pub const TEXT_PRIMARY: Color = Color::Rgb(199, 213, 224); // #c7d5e0
@@ -81,6 +82,7 @@ pub fn base_bg() -> Style {
 }
 
 /// Background fill style for panel areas.
+#[allow(dead_code)]
 pub fn panel_bg() -> Style {
     Style::default().bg(PANEL_BG)
 }
