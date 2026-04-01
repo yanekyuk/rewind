@@ -76,13 +76,16 @@ jobs:
 
       - name: Extract tag message
         id: tag_message
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          MESSAGE=$(git tag -l --format='%(contents)' "$TAG")
+          TAG_SHA=$(gh api repos/${{ github.repository }}/git/ref/tags/${TAG} --jq '.object.sha')
+          MESSAGE=$(gh api repos/${{ github.repository }}/git/tags/${TAG_SHA} --jq '.message')
           {
-            echo "body<<EOF"
+            echo "body<<RELEASE_BODY_EOF"
             echo "$MESSAGE"
-            echo "EOF"
+            echo "RELEASE_BODY_EOF"
           } >> "$GITHUB_OUTPUT"
 
       - name: Download all artifacts
@@ -114,7 +117,7 @@ jobs:
       - name: Update download links
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          BASE_URL="https://github.com/yanekyuk/rewind/releases/download/${TAG}"
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
 
           sed -i "s#| Windows (64-bit) | .*#| Windows (64-bit) | [\`rewind-x86_64-windows.zip\`](${BASE_URL}/rewind-x86_64-windows.zip) |#" README.md
           sed -i "s#| macOS (Apple Silicon) | .*#| macOS (Apple Silicon) | [\`rewind-aarch64-macos.tar.gz\`](${BASE_URL}/rewind-aarch64-macos.tar.gz) |#" README.md
