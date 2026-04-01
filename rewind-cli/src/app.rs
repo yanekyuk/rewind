@@ -79,10 +79,10 @@ pub struct VersionPickerState {
     pub selected_index: usize,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ImageState {
-    /// Loaded hero images keyed by app_id.
-    pub loaded_images: HashMap<u32, image::DynamicImage>,
+    /// Cached resize protocols keyed by app_id (ready to render, no per-frame encoding).
+    pub protocols: HashMap<u32, ratatui_image::protocol::StatefulProtocol>,
     /// App IDs currently being fetched (to avoid duplicate requests).
     pub pending_fetches: HashSet<u32>,
 }

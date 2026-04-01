@@ -8,7 +8,7 @@ use ratatui::{
 use ratatui_image::StatefulImage;
 use rewind_core::steamdb;
 
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
 
     // Background fill
@@ -80,7 +80,7 @@ fn draw_game_list(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     f.render_widget(list, area);
 }
 
-fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
     let Some(game) = app.selected_game() else {
         let block = Block::default()
             .borders(Borders::ALL)
@@ -97,7 +97,9 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         return;
     };
 
-    let entry = app.games_config.games.iter().find(|e| e.app_id == game.app_id);
+    // Copy all data from game/entry before mutable borrow on image_state
+    let game_app_id = game.app_id;
+    let entry = app.games_config.games.iter().find(|e| e.app_id == game_app_id);
 
     let status_line = match entry {
         Some(e) if e.acf_locked && e.active_manifest_id != e.latest_manifest_id => {
@@ -109,8 +111,8 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     };
 
     let active_manifest = entry
-        .map(|e| e.active_manifest_id.as_str())
-        .unwrap_or(game.manifest_id.as_str());
+        .map(|e| e.active_manifest_id.clone())
+        .unwrap_or_else(|| game.manifest_id.clone());
 
     let cached_list = entry
         .map(|e| e.cached_manifest_ids.join(", "))
@@ -139,19 +141,15 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     f.render_widget(block, area);
 
     // Render hero image in the top portion if available, with text below.
-    if let (Some(picker), Some(dyn_img)) = (
-        app.image_picker.as_ref(),
-        app.image_state.loaded_images.get(&game.app_id),
-    ) {
+    if let Some(protocol) = app.image_state.protocols.get_mut(&game_app_id) {
         let split = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
             .split(inner);
 
         // Image fills its area with no additional margin
-        let mut protocol = picker.new_resize_protocol(dyn_img.clone());
         let widget = StatefulImage::default();
-        f.render_stateful_widget(widget, split[0], &mut protocol);
+        f.render_stateful_widget(widget, split[0], protocol);
 
         let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
         f.render_widget(para, split[1]);

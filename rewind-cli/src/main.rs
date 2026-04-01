@@ -54,7 +54,7 @@ async fn run(
     let (image_tx, mut image_rx) = mpsc::channel::<(u32, Option<image::DynamicImage>)>(16);
 
     loop {
-        terminal.draw(|f| ui::draw(f, &app))?;
+        terminal.draw(|f| ui::draw(f, &mut app))?;
 
         // Poll progress channel.
         let progress_msgs: Vec<rewind_core::depot::DepotProgress> = {
@@ -172,11 +172,14 @@ async fn run(
             }
         }
 
-        // Receive loaded images
+        // Receive loaded images and convert to cached protocols
         while let Ok((app_id, maybe_img)) = image_rx.try_recv() {
             app.image_state.pending_fetches.remove(&app_id);
             if let Some(img) = maybe_img {
-                app.image_state.loaded_images.insert(app_id, img);
+                if let Some(ref picker) = app.image_picker {
+                    let protocol = picker.new_resize_protocol(img);
+                    app.image_state.protocols.insert(app_id, protocol);
+                }
             }
         }
 
@@ -184,7 +187,7 @@ async fn run(
         if app.image_picker.is_some() {
             if let Some(game) = app.selected_game() {
                 let app_id = game.app_id;
-                if !app.image_state.loaded_images.contains_key(&app_id)
+                if !app.image_state.protocols.contains_key(&app_id)
                     && !app.image_state.pending_fetches.contains(&app_id)
                 {
                     app.image_state.pending_fetches.insert(app_id);

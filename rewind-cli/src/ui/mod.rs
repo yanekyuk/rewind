@@ -29,7 +29,7 @@ pub fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-pub fn draw(f: &mut Frame, app: &App) {
+pub fn draw(f: &mut Frame, app: &mut App) {
     match app.screen {
         Screen::FirstRun => first_run::draw(f, app),
         Screen::Main => main_screen::draw(f, app),
