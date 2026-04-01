@@ -87,11 +87,7 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let log_items: Vec<ListItem> = if let Some(err) = &app.wizard_state.error {
         vec![ListItem::new(err.as_str()).style(Style::default().fg(Color::Red))]
     } else {
-        app.wizard_state
-            .progress_lines
-            .iter()
-            .map(|l| ListItem::new(l.as_str()))
-            .collect()
+        vec![]
     };
 
     let log_block = Block::default()
@@ -192,11 +188,17 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             .prompt_label
             .as_deref()
             .unwrap_or("Input required:");
+        let is_password = label.to_lowercase().contains("password");
+        let display_text = if is_password {
+            format!("{}\u{2588}", "*".repeat(input.len()))
+        } else {
+            format!("{}\u{2588}", input)
+        };
         let prompt_block = Block::default()
             .title(format!(" {} ", label))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Cyan));
-        let prompt_para = Paragraph::new(format!("{}\u{2588}", input))
+        let prompt_para = Paragraph::new(display_text)
             .style(
                 Style::default()
                     .fg(Color::White)

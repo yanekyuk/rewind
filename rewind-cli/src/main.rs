@@ -95,8 +95,9 @@ async fn run(
                         )
                         .await
                         {
-                            Ok(stdin) => {
+                            Ok((stdin, kill_tx)) => {
                                 app.depot_stdin = Some(stdin);
+                                app.depot_kill = Some(kill_tx);
                             }
                             Err(e) => {
                                 app.set_step_status(
@@ -118,6 +119,7 @@ async fn run(
                 rewind_core::depot::DepotProgress::Done => {
                     app.set_step_status(&StepKind::DownloadManifest, StepStatus::Done);
                     app.depot_stdin = None;
+                    app.depot_kill = None;
                     if let Some(dl) = app.pending_download.take() {
                         finalize_downgrade_with_steps(&mut app, dl);
                     }
@@ -366,10 +368,13 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
                 }
             }
             KeyCode::Esc => {
+                if let Some(kill) = app.depot_kill.take() {
+                    let _ = kill.try_send(());
+                }
+                app.depot_stdin = None;
                 app.wizard_state.prompt_input = None;
                 app.wizard_state.prompt_label = None;
                 app.wizard_state.is_downloading = false;
-                app.depot_stdin = None;
                 app.screen = Screen::Main;
                 app.wizard_state = DowngradeWizardState::default();
             }
@@ -381,6 +386,9 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
     // Normal wizard key handling.
     match key {
         KeyCode::Esc => {
+            if let Some(kill) = app.depot_kill.take() {
+                let _ = kill.try_send(());
+            }
             app.depot_stdin = None;
             app.screen = Screen::Main;
             app.wizard_state = DowngradeWizardState::default();
@@ -400,6 +408,9 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
         }
         KeyCode::Char('r') if app.wizard_state.is_downloading => {
             // Fallback: kill current download and offer to restart.
+            if let Some(kill) = app.depot_kill.take() {
+                let _ = kill.try_send(());
+            }
             app.depot_stdin = None;
             app.progress_rx = None;
             app.last_depot_output = None;
@@ -538,7 +549,6 @@ fn start_download(app: &mut App) {
     let (tx, rx) = mpsc::channel(64);
     app.progress_rx = Some(rx);
     app.wizard_state.is_downloading = true;
-    app.wizard_state.progress_lines.clear();
     app.wizard_state.depot_lines.clear();
     app.wizard_state.error = None;
     app.wizard_state.error_url = None;
@@ -555,7 +565,6 @@ fn start_download(app: &mut App) {
     ];
 
     app.pending_download = Some(PendingDownload {
-        binary: std::path::PathBuf::new(),
         app_id: game.app_id,
         depot_id: game.depot_id,
         manifest_id,

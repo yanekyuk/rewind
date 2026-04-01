@@ -199,7 +199,7 @@ pub async fn ensure_depot_downloader(bin_dir: &Path) -> Result<PathBuf, DepotErr
 /// Check whether a partial output line looks like a credential prompt.
 fn looks_like_prompt(line: &str) -> bool {
     let lower = line.to_lowercase();
-    lower.contains("password") || lower.contains("guard") || lower.contains("2fa") || lower.contains("code")
+    lower.contains("password") || lower.contains("steam guard") || lower.contains("2fa")
 }
 
 /// Read from an async reader byte-by-byte, flushing partial lines after a timeout.
@@ -265,6 +265,8 @@ async fn stream_output(
 }
 
 /// Run DepotDownloader with inherited stdio (interactive — handles password/Steam Guard prompts).
+///
+/// Kept as a fallback for terminal-mode restart if piped I/O fails to handle credential prompts.
 pub async fn run_depot_downloader_interactive(
     binary: &Path,
     app_id: u32,
@@ -290,7 +292,8 @@ pub async fn run_depot_downloader_interactive(
 }
 
 /// Run DepotDownloader with piped stdin/stdout/stderr.
-/// Returns a ChildStdin handle so the caller can forward credential input.
+/// Returns a ChildStdin handle so the caller can forward credential input,
+/// and a kill sender that can be used to terminate the child process.
 /// Output is streamed via the mpsc sender, with prompt detection.
 pub async fn run_depot_downloader(
     binary: &Path,
@@ -300,7 +303,7 @@ pub async fn run_depot_downloader(
     username: &str,
     cache_dir: &Path,
     tx: mpsc::Sender<DepotProgress>,
-) -> Result<tokio::process::ChildStdin, DepotError> {
+) -> Result<(tokio::process::ChildStdin, mpsc::Sender<()>), DepotError> {
     std::fs::create_dir_all(cache_dir)?;
 
     let args = build_args(
@@ -332,28 +335,35 @@ pub async fn run_depot_downloader(
         stream_output(stderr, tx_err).await;
     });
 
+    let (kill_tx, mut kill_rx) = mpsc::channel::<()>(1);
     let tx_done = tx.clone();
     tokio::spawn(async move {
-        let status = child.wait().await;
-        match status {
-            Ok(s) if s.success() => {
-                let _ = tx_done.send(DepotProgress::Done).await;
+        tokio::select! {
+            status = child.wait() => {
+                match status {
+                    Ok(s) if s.success() => {
+                        let _ = tx_done.send(DepotProgress::Done).await;
+                    }
+                    Ok(s) => {
+                        let code = s.code().unwrap_or(-1);
+                        let _ = tx_done
+                            .send(DepotProgress::Error(format!("exit code {}", code)))
+                            .await;
+                    }
+                    Err(e) => {
+                        let _ = tx_done
+                            .send(DepotProgress::Error(format!("process error: {}", e)))
+                            .await;
+                    }
+                }
             }
-            Ok(s) => {
-                let code = s.code().unwrap_or(-1);
-                let _ = tx_done
-                    .send(DepotProgress::Error(format!("exit code {}", code)))
-                    .await;
-            }
-            Err(e) => {
-                let _ = tx_done
-                    .send(DepotProgress::Error(format!("process error: {}", e)))
-                    .await;
+            _ = kill_rx.recv() => {
+                let _ = child.kill().await;
             }
         }
     });
 
-    Ok(stdin)
+    Ok((stdin, kill_tx))
 }
 
 #[cfg(test)]

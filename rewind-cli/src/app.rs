@@ -52,7 +52,6 @@ pub enum Screen {
 pub struct DowngradeWizardState {
     pub manifest_input: String,
     pub steamdb_url: String,
-    pub progress_lines: Vec<String>,
     pub is_downloading: bool,
     pub error: Option<String>,
     /// When set, pressing [O] opens this URL instead of the SteamDB manifests page.
@@ -81,7 +80,6 @@ pub struct VersionPickerState {
 
 /// Download parameters for the active DepotDownloader session.
 pub struct PendingDownload {
-    pub binary: PathBuf,
     pub app_id: u32,
     pub depot_id: u32,
     pub manifest_id: String,
@@ -107,6 +105,8 @@ pub struct App {
     pub pending_download: Option<PendingDownload>,
     /// Stdin handle for the running DepotDownloader process (used to forward credential input).
     pub depot_stdin: Option<tokio::process::ChildStdin>,
+    /// Sender to kill the DepotDownloader child process.
+    pub depot_kill: Option<mpsc::Sender<()>>,
     /// Receiver to get the stdin handle back after writing credentials.
     pub pending_stdin_return: Option<mpsc::Receiver<tokio::process::ChildStdin>>,
     /// Tracks when the last DepotDownloader output was received (for timeout detection).
@@ -129,6 +129,7 @@ impl App {
             progress_rx: None,
             pending_download: None,
             depot_stdin: None,
+            depot_kill: None,
             pending_stdin_return: None,
             last_depot_output: None,
             should_quit: false,
