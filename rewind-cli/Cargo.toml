@@ -14,3 +14,5 @@ crossterm = "0.28"
 tokio = { version = "1", features = ["full"] }
 open = "5"
 anyhow = "1"
+ratatui-image = "6"
+image = "0.25"
