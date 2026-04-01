@@ -81,16 +81,14 @@ fn draw_game_list(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 }
 
 fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
-        .border_style(theme::border())
-        .style(theme::base_bg());
-
-    let inner = block.inner(area);
-    f.render_widget(block, area);
-
     let Some(game) = app.selected_game() else {
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Plain)
+            .border_style(theme::border())
+            .style(theme::base_bg());
+        let inner = block.inner(area);
+        f.render_widget(block, area);
         let msg = Paragraph::new(
             "No games found.\nPress [S] to add a Steam library.",
         )
@@ -136,25 +134,40 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         app.image_picker.as_ref(),
         app.image_state.loaded_images.get(&game.app_id),
     ) {
+        // Image takes top ~40% with zero margin, text panel with border below
         let split = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(inner);
+            .split(area);
 
         let image_area = split[0];
-        let text_area = split[1];
 
-        // Clone the image and create a per-render StatefulProtocol.
-        // (Picker::new_resize_protocol encodes on demand so the clone is necessary
-        // because render_stateful_widget requires &mut state.)
+        // Render image edge-to-edge (no border, no margin)
         let mut protocol = picker.new_resize_protocol(dyn_img.clone());
         let widget = StatefulImage::default();
         f.render_stateful_widget(widget, image_area, &mut protocol);
 
+        // Text area with border
+        let text_block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Plain)
+            .border_style(theme::border())
+            .style(theme::base_bg());
+        let text_inner = text_block.inner(split[1]);
+        f.render_widget(text_block, split[1]);
+
         let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
-        f.render_widget(para, text_area);
+        f.render_widget(para, text_inner);
     } else {
-        // No image available: render text in the full inner area.
+        // No image available: render text in bordered panel.
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .border_type(BorderType::Plain)
+            .border_style(theme::border())
+            .style(theme::base_bg());
+        let inner = block.inner(area);
+        f.render_widget(block, area);
+
         let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
         f.render_widget(para, inner);
     }

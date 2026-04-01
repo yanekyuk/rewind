@@ -192,9 +192,10 @@ async fn run(
                     tokio::spawn(async move {
                         let result = async {
                             let images_dir = rewind_core::image_cache::images_dir()?;
-                            let bytes = match rewind_core::image_cache::load_cached_hero(&images_dir, app_id) {
+                            // Try cached composited image first, otherwise fetch and composite
+                            let bytes = match rewind_core::image_cache::load_cached_composited(&images_dir, app_id) {
                                 Some(b) => b,
-                                None => rewind_core::image_cache::fetch_and_cache_hero(&images_dir, app_id).await?,
+                                None => rewind_core::image_cache::fetch_and_composite(&images_dir, app_id).await?,
                             };
                             let img = image::load_from_memory(&bytes)?;
                             Ok::<_, Box<dyn std::error::Error + Send + Sync>>(img)
