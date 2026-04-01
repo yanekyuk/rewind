@@ -43,3 +43,12 @@ Before merging or creating a PR, always:
 1. **Bump versions** in `rewind-core/Cargo.toml` and `rewind-cli/Cargo.toml` if any features or fixes were added
 2. **Update CLAUDE.md** if architecture, conventions, or build instructions changed
 3. **Update README.md** if user-facing behavior, keybindings, or setup instructions changed
+
+## Creating Releases
+
+Use annotated tags with release notes:
+
+```sh
+git tag -a v0.2.0 -m "Release notes here..."
+git push origin v0.2.0
+```
