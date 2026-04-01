@@ -2,6 +2,7 @@ pub mod downgrade_wizard;
 pub mod first_run;
 pub mod main_screen;
 pub mod settings;
+pub mod theme;
 pub mod version_picker;
 
 use crate::app::{App, Screen};
