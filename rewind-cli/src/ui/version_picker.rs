@@ -1,8 +1,8 @@
 use crate::app::App;
+use crate::ui::theme;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
-    style::{Color, Style},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph},
 };
 
@@ -15,7 +15,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Cyan));
+        .border_style(theme::border_accent())
+        .style(theme::base_bg());
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -33,7 +34,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     if cached.is_empty() {
         let msg = Paragraph::new("No cached versions found.\nUse [D] to downgrade first.")
             .alignment(Alignment::Center)
-            .style(Style::default().fg(Color::DarkGray));
+            .style(theme::text_secondary());
         f.render_widget(msg, layout[0]);
     } else {
         let active = app
@@ -53,11 +54,11 @@ pub fn draw(f: &mut Frame, app: &App) {
                 };
 
                 let style = if i == app.version_picker_state.selected_index {
-                    Style::default().fg(Color::Black).bg(Color::Cyan)
+                    theme::selected()
                 } else if is_active {
-                    Style::default().fg(Color::Green)
+                    theme::status_success()
                 } else {
-                    Style::default()
+                    theme::text()
                 };
 
                 ListItem::new(label).style(style)
@@ -69,7 +70,6 @@ pub fn draw(f: &mut Frame, app: &App) {
     }
 
     let help = Paragraph::new(" [↑↓] select   [Enter] switch   [Esc] cancel ")
-        .style(Style::default().fg(Color::DarkGray));
+        .style(theme::help_bar());
     f.render_widget(help, layout[1]);
 }
-

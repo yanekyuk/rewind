@@ -1,14 +1,18 @@
 use crate::app::App;
+use crate::ui::theme;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
-    style::{Color, Modifier, Style},
-    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
 use rewind_core::steamdb;
 
 pub fn draw(f: &mut Frame, app: &App) {
     let area = f.area();
+
+    // Background fill
+    f.render_widget(Clear, area);
+    f.render_widget(Paragraph::new("").style(theme::base_bg()), area);
 
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -21,11 +25,7 @@ pub fn draw(f: &mut Frame, app: &App) {
 
     // Title bar
     let title = Paragraph::new(" rewind — Steam Version Manager ")
-        .style(
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        );
+        .style(theme::title());
     f.render_widget(title, outer[0]);
 
     // Content
@@ -41,7 +41,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     let status = Paragraph::new(
         " [↑↓/jk] navigate  [D] downgrade  [U] upgrade  [L] lock  [O] SteamDB  [S] settings  [Q] quit ",
     )
-    .style(Style::default().fg(Color::DarkGray));
+    .style(theme::help_bar());
     f.render_widget(status, outer[2]);
 }
 
@@ -59,9 +59,9 @@ fn draw_game_list(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             };
 
             let style = if i == app.selected_game_index {
-                Style::default().fg(Color::Black).bg(Color::Cyan)
+                theme::selected()
             } else {
-                Style::default()
+                theme::text()
             };
 
             ListItem::new(format!("{}{}", indicator, game.name)).style(style)
@@ -72,7 +72,8 @@ fn draw_game_list(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .title(" GAMES ")
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(theme::border())
+        .style(theme::base_bg());
 
     let list = List::new(items).block(block);
     f.render_widget(list, area);
@@ -82,7 +83,8 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(theme::border())
+        .style(theme::base_bg());
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -91,7 +93,7 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         let msg = Paragraph::new(
             "No games found.\nPress [S] to add a Steam library.",
         )
-        .style(Style::default().fg(Color::DarkGray));
+        .style(theme::text_secondary());
         f.render_widget(msg, inner);
         return;
     };
@@ -128,6 +130,6 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         url = steamdb_url,
     );
 
-    let para = Paragraph::new(text).wrap(Wrap { trim: false });
+    let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
     f.render_widget(para, inner);
 }

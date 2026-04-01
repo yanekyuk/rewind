@@ -1,8 +1,9 @@
 use crate::app::{App, StepStatus};
+use crate::ui::theme;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
-    style::{Color, Modifier, Style},
+    style::Style,
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph},
 };
 
@@ -15,7 +16,8 @@ pub fn draw(f: &mut Frame, app: &App) {
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(theme::border_focused())
+        .style(theme::base_bg());
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -48,9 +50,10 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let url_block = Block::default()
         .title(" 1. Open this URL in your browser to find the manifest ID ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(theme::border())
+        .style(theme::base_bg());
     let url_para = Paragraph::new(app.wizard_state.steamdb_url.as_str())
-        .style(Style::default().fg(Color::Cyan))
+        .style(Style::default().fg(theme::ACCENT).bg(theme::BASE_BG))
         .block(url_block);
     f.render_widget(url_para, layout[0]);
 
@@ -61,16 +64,15 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         ""
     };
     let input_style = if app.wizard_state.is_downloading {
-        Style::default().fg(Color::DarkGray)
+        theme::input_inactive()
     } else {
-        Style::default()
-            .fg(Color::White)
-            .add_modifier(Modifier::BOLD)
+        theme::input_active()
     };
     let input_block = Block::default()
         .title(" 2. Enter target manifest ID then press [Enter] ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::Yellow));
+        .border_style(theme::border_focused())
+        .style(theme::base_bg());
     let input_para =
         Paragraph::new(format!("{}{}", app.wizard_state.manifest_input, cursor))
             .style(input_style)
@@ -79,13 +81,13 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     // Error / output log
     let (log_title, log_border_style) = if app.wizard_state.error.is_some() {
-        (" Error ", Style::default().fg(Color::Red))
+        (" Error ", Style::default().fg(theme::ERROR).bg(theme::BASE_BG))
     } else {
-        (" Output ", Style::default().fg(Color::DarkGray))
+        (" Output ", theme::border())
     };
 
     let log_items: Vec<ListItem> = if let Some(err) = &app.wizard_state.error {
-        vec![ListItem::new(err.as_str()).style(Style::default().fg(Color::Red))]
+        vec![ListItem::new(err.as_str()).style(Style::default().fg(theme::ERROR).bg(theme::BASE_BG))]
     } else {
         vec![]
     };
@@ -93,7 +95,8 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let log_block = Block::default()
         .title(log_title)
         .borders(Borders::ALL)
-        .border_style(log_border_style);
+        .border_style(log_border_style)
+        .style(theme::base_bg());
     let log_list = List::new(log_items).block(log_block);
     f.render_widget(log_list, layout[2]);
 
@@ -103,7 +106,7 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     } else {
         " [O] open SteamDB in browser   [Esc] cancel   [Ctrl+C] quit "
     };
-    let help = Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray));
+    let help = Paragraph::new(help_text).style(theme::help_bar());
     f.render_widget(help, layout[3]);
 }
 
@@ -136,21 +139,19 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             let (icon, style) = match status {
                 StepStatus::Pending => (
                     "[ ]",
-                    Style::default().fg(Color::DarkGray),
+                    theme::text_secondary(),
                 ),
                 StepStatus::InProgress => (
                     "[\u{2026}]",
-                    Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::BOLD),
+                    theme::status_warning(),
                 ),
                 StepStatus::Done => (
                     "[\u{2713}]",
-                    Style::default().fg(Color::Green),
+                    theme::status_success(),
                 ),
                 StepStatus::Failed(_) => (
                     "[\u{2717}]",
-                    Style::default().fg(Color::Red),
+                    theme::status_error(),
                 ),
             };
             ListItem::new(format!(" {} {}", icon, kind.label())).style(style)
@@ -163,7 +164,8 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let depot_block = Block::default()
         .title(" DepotDownloader ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(Color::DarkGray));
+        .border_style(theme::border())
+        .style(theme::base_bg());
 
     let depot_inner_height = depot_block.inner(layout[1]).height as usize;
     let depot_items: Vec<ListItem> = app
@@ -175,7 +177,7 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
-        .map(|l| ListItem::new(l.as_str()).style(Style::default().fg(Color::DarkGray)))
+        .map(|l| ListItem::new(l.as_str()).style(theme::text_secondary()))
         .collect();
 
     let depot_list = List::new(depot_items).block(depot_block);
@@ -197,13 +199,10 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         let prompt_block = Block::default()
             .title(format!(" {} ", label))
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+            .border_style(theme::border_accent())
+            .style(theme::base_bg());
         let prompt_para = Paragraph::new(display_text)
-            .style(
-                Style::default()
-                    .fg(Color::White)
-                    .add_modifier(Modifier::BOLD),
-            )
+            .style(theme::input_active())
             .block(prompt_block);
         f.render_widget(prompt_para, layout[2]);
     }
@@ -220,6 +219,6 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     } else {
         " [Esc] cancel   [Ctrl+C] quit "
     };
-    let help = Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray));
+    let help = Paragraph::new(help_text).style(theme::help_bar());
     f.render_widget(help, layout[3]);
 }
