@@ -5,6 +5,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
+use ratatui_image::StatefulImage;
 use rewind_core::steamdb;
 
 pub fn draw(f: &mut Frame, app: &App) {
@@ -130,6 +131,31 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         url = steamdb_url,
     );
 
-    let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
-    f.render_widget(para, inner);
+    // Render hero image in the top portion if available, with text below.
+    if let (Some(picker), Some(dyn_img)) = (
+        app.image_picker.as_ref(),
+        app.image_state.loaded_images.get(&game.app_id),
+    ) {
+        let split = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .split(inner);
+
+        let image_area = split[0];
+        let text_area = split[1];
+
+        // Clone the image and create a per-render StatefulProtocol.
+        // (Picker::new_resize_protocol encodes on demand so the clone is necessary
+        // because render_stateful_widget requires &mut state.)
+        let mut protocol = picker.new_resize_protocol(dyn_img.clone());
+        let widget = StatefulImage::default();
+        f.render_stateful_widget(widget, image_area, &mut protocol);
+
+        let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
+        f.render_widget(para, text_area);
+    } else {
+        // No image available: render text in the full inner area.
+        let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
+        f.render_widget(para, inner);
+    }
 }
