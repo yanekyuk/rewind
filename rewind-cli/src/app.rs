@@ -107,6 +107,8 @@ pub struct App {
     pub pending_download: Option<PendingDownload>,
     /// Stdin handle for the running DepotDownloader process (used to forward credential input).
     pub depot_stdin: Option<tokio::process::ChildStdin>,
+    /// Receiver to get the stdin handle back after writing credentials.
+    pub pending_stdin_return: Option<mpsc::Receiver<tokio::process::ChildStdin>>,
     pub should_quit: bool,
 }
 
@@ -125,6 +127,7 @@ impl App {
             progress_rx: None,
             pending_download: None,
             depot_stdin: None,
+            pending_stdin_return: None,
             should_quit: false,
         }
     }

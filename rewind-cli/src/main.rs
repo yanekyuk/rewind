@@ -140,6 +140,14 @@ async fn run(
             }
         }
 
+        // Recover stdin handle after credential write.
+        if let Some(ref mut rx) = app.pending_stdin_return {
+            if let Ok(stdin) = rx.try_recv() {
+                app.depot_stdin = Some(stdin);
+                app.pending_stdin_return = None;
+            }
+        }
+
         if !event::poll(Duration::from_millis(50))? {
             continue;
         }
@@ -312,8 +320,52 @@ fn handle_main(app: &mut App, key: KeyCode) {
 }
 
 fn handle_wizard(app: &mut App, key: KeyCode) {
+    // If a credential prompt is active, handle input for that.
+    if app.wizard_state.prompt_input.is_some() {
+        match key {
+            KeyCode::Char(c) => {
+                if let Some(ref mut input) = app.wizard_state.prompt_input {
+                    input.push(c);
+                }
+            }
+            KeyCode::Backspace => {
+                if let Some(ref mut input) = app.wizard_state.prompt_input {
+                    input.pop();
+                }
+            }
+            KeyCode::Enter => {
+                if let Some(input) = app.wizard_state.prompt_input.take() {
+                    if let Some(mut stdin) = app.depot_stdin.take() {
+                        use tokio::io::AsyncWriteExt;
+                        let response = format!("{}\n", input);
+                        let (tx, rx) = mpsc::channel::<tokio::process::ChildStdin>(1);
+                        tokio::spawn(async move {
+                            let _ = stdin.write_all(response.as_bytes()).await;
+                            let _ = stdin.flush().await;
+                            let _ = tx.send(stdin).await;
+                        });
+                        app.pending_stdin_return = Some(rx);
+                    }
+                    app.wizard_state.prompt_label = None;
+                }
+            }
+            KeyCode::Esc => {
+                app.wizard_state.prompt_input = None;
+                app.wizard_state.prompt_label = None;
+                app.wizard_state.is_downloading = false;
+                app.depot_stdin = None;
+                app.screen = Screen::Main;
+                app.wizard_state = DowngradeWizardState::default();
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // Normal wizard key handling.
     match key {
         KeyCode::Esc => {
+            app.depot_stdin = None;
             app.screen = Screen::Main;
             app.wizard_state = DowngradeWizardState::default();
         }
