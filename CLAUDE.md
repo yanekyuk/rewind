@@ -31,3 +31,15 @@ Note: 2 immutability tests (`lock_and_unlock_file`, `is_locked_reflects_state`) 
 ## Commit Style
 
 Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `style:`
+
+## Implementation Workflow
+
+When implementing features or fixes, always use subagent-driven development within a git worktree for isolation.
+
+## Before Finishing a Branch
+
+Before merging or creating a PR, always:
+
+1. **Bump versions** in `rewind-core/Cargo.toml` and `rewind-cli/Cargo.toml` if any features or fixes were added
+2. **Update CLAUDE.md** if architecture, conventions, or build instructions changed
+3. **Update README.md** if user-facing behavior, keybindings, or setup instructions changed
