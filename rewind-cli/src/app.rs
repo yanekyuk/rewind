@@ -79,7 +79,7 @@ pub struct VersionPickerState {
     pub selected_index: usize,
 }
 
-/// All information needed to run DepotDownloader interactively after the TUI suspends.
+/// Download parameters for the active DepotDownloader session.
 pub struct PendingDownload {
     pub binary: PathBuf,
     pub app_id: u32,
@@ -103,7 +103,7 @@ pub struct App {
     pub settings_state: SettingsState,
     pub version_picker_state: VersionPickerState,
     pub progress_rx: Option<mpsc::Receiver<DepotProgress>>,
-    /// Set when the binary is ready and the TUI should suspend for interactive download.
+    /// Active download parameters (set when download starts, consumed on completion).
     pub pending_download: Option<PendingDownload>,
     /// Stdin handle for the running DepotDownloader process (used to forward credential input).
     pub depot_stdin: Option<tokio::process::ChildStdin>,
