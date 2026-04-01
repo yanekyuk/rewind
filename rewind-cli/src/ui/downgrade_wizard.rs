@@ -207,7 +207,17 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     }
 
     // --- Help line ---
-    let help_text = " [Esc] cancel   [Ctrl+C] quit ";
+    let help_text = if app
+        .wizard_state
+        .error
+        .as_ref()
+        .map(|e| e.contains("[R]"))
+        .unwrap_or(false)
+    {
+        " [R] restart in terminal   [Esc] cancel   [Ctrl+C] quit "
+    } else {
+        " [Esc] cancel   [Ctrl+C] quit "
+    };
     let help = Paragraph::new(help_text).style(Style::default().fg(Color::DarkGray));
     f.render_widget(help, layout[3]);
 }

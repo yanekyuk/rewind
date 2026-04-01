@@ -76,6 +76,7 @@ async fn run(
                         }
                     } else {
                         app.wizard_state.depot_lines.push(line);
+                        app.last_depot_output = Some(std::time::Instant::now());
                     }
                 }
                 rewind_core::depot::DepotProgress::ReadyToDownload { binary } => {
@@ -112,6 +113,7 @@ async fn run(
                 rewind_core::depot::DepotProgress::Prompt(label) => {
                     app.wizard_state.prompt_label = Some(label);
                     app.wizard_state.prompt_input = Some(String::new());
+                    app.last_depot_output = Some(std::time::Instant::now());
                 }
                 rewind_core::depot::DepotProgress::Done => {
                     app.set_step_status(&StepKind::DownloadManifest, StepStatus::Done);
@@ -145,6 +147,20 @@ async fn run(
             if let Ok(stdin) = rx.try_recv() {
                 app.depot_stdin = Some(stdin);
                 app.pending_stdin_return = None;
+            }
+        }
+
+        // Timeout detection: if DepotDownloader has been silent for 30s during download,
+        // it may be stuck on an undetected prompt.
+        if app.depot_stdin.is_some() && app.wizard_state.prompt_input.is_none() {
+            if let Some(last) = app.last_depot_output {
+                if last.elapsed() > Duration::from_secs(30)
+                    && app.wizard_state.error.is_none()
+                {
+                    app.wizard_state.error = Some(
+                        "DepotDownloader may be waiting for input. Press [R] to restart with terminal mode.".into()
+                    );
+                }
             }
         }
 
@@ -381,6 +397,18 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
             if !app.wizard_state.is_downloading {
                 app.wizard_state.manifest_input.pop();
             }
+        }
+        KeyCode::Char('r') if app.wizard_state.is_downloading => {
+            // Fallback: kill current download and offer to restart.
+            app.depot_stdin = None;
+            app.progress_rx = None;
+            app.last_depot_output = None;
+            app.wizard_state.is_downloading = false;
+            app.wizard_state.steps.clear();
+            app.wizard_state.depot_lines.clear();
+            app.wizard_state.error = Some(
+                "Download cancelled. Press [Enter] to retry or [Esc] to go back.".into(),
+            );
         }
         KeyCode::Char(c) => {
             if !app.wizard_state.is_downloading {

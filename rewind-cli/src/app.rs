@@ -109,6 +109,8 @@ pub struct App {
     pub depot_stdin: Option<tokio::process::ChildStdin>,
     /// Receiver to get the stdin handle back after writing credentials.
     pub pending_stdin_return: Option<mpsc::Receiver<tokio::process::ChildStdin>>,
+    /// Tracks when the last DepotDownloader output was received (for timeout detection).
+    pub last_depot_output: Option<std::time::Instant>,
     pub should_quit: bool,
 }
 
@@ -128,6 +130,7 @@ impl App {
             pending_download: None,
             depot_stdin: None,
             pending_stdin_return: None,
+            last_depot_output: None,
             should_quit: false,
         }
     }
