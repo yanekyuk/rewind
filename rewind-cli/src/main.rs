@@ -130,6 +130,10 @@ async fn run(
                 }
                 rewind_core::depot::DepotProgress::Error(e) => {
                     app.wizard_state.is_downloading = false;
+                    if e.contains(".NET runtime not found") {
+                        app.wizard_state.error_url =
+                            Some("https://dotnet.microsoft.com/download".into());
+                    }
                     app.wizard_state.error = Some(e);
                 }
             }
@@ -313,7 +317,11 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
             app.wizard_state = DowngradeWizardState::default();
         }
         KeyCode::Char('o') => {
-            let url = app.wizard_state.steamdb_url.clone();
+            let url = if let Some(ref err_url) = app.wizard_state.error_url {
+                err_url.clone()
+            } else {
+                app.wizard_state.steamdb_url.clone()
+            };
             let _ = open::that(url);
         }
         KeyCode::Backspace => {
@@ -438,6 +446,7 @@ fn start_download(app: &mut App) {
     app.wizard_state.is_downloading = true;
     app.wizard_state.progress_lines.clear();
     app.wizard_state.error = None;
+    app.wizard_state.error_url = None;
 
     // All async work (dotnet check + binary download) runs in a background task so the
     // main event loop is never blocked and the TUI stays responsive.
@@ -450,8 +459,7 @@ fn start_download(app: &mut App) {
         if !rewind_core::depot::check_dotnet().await {
             let _ = tx
                 .send(rewind_core::depot::DepotProgress::Error(
-                    ".NET runtime not found. Install from https://dotnet.microsoft.com/download"
-                        .into(),
+                    ".NET runtime not found. Press [O] to open the download page.".into(),
                 ))
                 .await;
             return;

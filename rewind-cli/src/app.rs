@@ -22,6 +22,8 @@ pub struct DowngradeWizardState {
     pub progress_lines: Vec<String>,
     pub is_downloading: bool,
     pub error: Option<String>,
+    /// When set, pressing [O] opens this URL instead of the SteamDB manifests page.
+    pub error_url: Option<String>,
 }
 
 #[derive(Debug, Default)]
