@@ -129,45 +129,33 @@ fn draw_detail_panel(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         url = steamdb_url,
     );
 
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Plain)
+        .border_style(theme::border())
+        .style(theme::base_bg());
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
     // Render hero image in the top portion if available, with text below.
     if let (Some(picker), Some(dyn_img)) = (
         app.image_picker.as_ref(),
         app.image_state.loaded_images.get(&game.app_id),
     ) {
-        // Image takes top ~40% with zero margin, text panel with border below
         let split = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
-            .split(area);
+            .split(inner);
 
-        let image_area = split[0];
-
-        // Render image edge-to-edge (no border, no margin)
+        // Image fills its area with no additional margin
         let mut protocol = picker.new_resize_protocol(dyn_img.clone());
         let widget = StatefulImage::default();
-        f.render_stateful_widget(widget, image_area, &mut protocol);
-
-        // Text area with border
-        let text_block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Plain)
-            .border_style(theme::border())
-            .style(theme::base_bg());
-        let text_inner = text_block.inner(split[1]);
-        f.render_widget(text_block, split[1]);
+        f.render_stateful_widget(widget, split[0], &mut protocol);
 
         let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
-        f.render_widget(para, text_inner);
+        f.render_widget(para, split[1]);
     } else {
-        // No image available: render text in bordered panel.
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_type(BorderType::Plain)
-            .border_style(theme::border())
-            .style(theme::base_bg());
-        let inner = block.inner(area);
-        f.render_widget(block, area);
-
         let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
         f.render_widget(para, inner);
     }
