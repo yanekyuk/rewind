@@ -314,12 +314,26 @@ pub async fn run_depot_downloader(
         cache_dir.to_string_lossy().as_ref(),
     );
 
-    let mut child = Command::new(binary)
-        .args(&args)
+    let mut cmd = Command::new(binary);
+    cmd.args(&args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()?;
+        .stderr(std::process::Stdio::piped());
+
+    // Detach from the controlling terminal so .NET's Console.Write
+    // cannot write directly to /dev/tty and corrupt the TUI.
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        unsafe {
+            cmd.pre_exec(|| {
+                libc::setsid();
+                Ok(())
+            });
+        }
+    }
+
+    let mut child = cmd.spawn()?;
 
     let stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();

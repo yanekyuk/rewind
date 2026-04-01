@@ -654,6 +654,7 @@ fn switch_to_cached_version(app: &mut App, manifest_id: String) {
         let latest_manifest = entry.latest_manifest_id.clone();
         let depot_id = entry.depot_id;
         let acf_path = entry.acf_path();
+        let _ = rewind_core::immutability::unlock_file(&acf_path);
         if let Err(e) = rewind_core::patcher::patch_acf_file(
             &acf_path,
             &latest_buildid,
@@ -748,6 +749,9 @@ fn finalize_downgrade_with_steps(app: &mut App, dl: PendingDownload) {
             acf_locked: true,
         });
     }
+
+    // Unlock ACF before patching (it may be locked from a previous downgrade).
+    let _ = rewind_core::immutability::unlock_file(&dl.acf_path);
 
     // Step 6: Patch ACF
     app.set_step_status(&StepKind::PatchManifest, StepStatus::InProgress);
