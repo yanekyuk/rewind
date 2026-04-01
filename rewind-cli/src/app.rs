@@ -3,6 +3,7 @@ use rewind_core::{
     depot::DepotProgress,
     scanner::InstalledGame,
 };
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
@@ -78,6 +79,14 @@ pub struct VersionPickerState {
     pub selected_index: usize,
 }
 
+#[derive(Debug, Default)]
+pub struct ImageState {
+    /// Loaded hero images keyed by app_id.
+    pub loaded_images: HashMap<u32, image::DynamicImage>,
+    /// App IDs currently being fetched (to avoid duplicate requests).
+    pub pending_fetches: HashSet<u32>,
+}
+
 /// Download parameters for the active DepotDownloader session.
 pub struct PendingDownload {
     pub app_id: u32,
@@ -107,6 +116,8 @@ pub struct App {
     pub depot_stdin: Option<tokio::process::ChildStdin>,
     /// Sender to kill the DepotDownloader child process.
     pub depot_kill: Option<mpsc::Sender<()>>,
+    pub image_state: ImageState,
+    pub image_picker: Option<ratatui_image::picker::Picker>,
     /// Receiver to get the stdin handle back after writing credentials.
     pub pending_stdin_return: Option<mpsc::Receiver<tokio::process::ChildStdin>>,
     /// Tracks when the last DepotDownloader output was received (for timeout detection).
@@ -130,6 +141,8 @@ impl App {
             pending_download: None,
             depot_stdin: None,
             depot_kill: None,
+            image_state: ImageState::default(),
+            image_picker: None,
             pending_stdin_return: None,
             last_depot_output: None,
             should_quit: false,

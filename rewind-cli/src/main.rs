@@ -47,6 +47,12 @@ async fn run(
 
     repair_stale_locks(&mut app);
 
+    // Detect terminal image protocol support
+    app.image_picker = ratatui_image::picker::Picker::from_query_stdio().ok();
+
+    // Image loading channel
+    let (image_tx, mut image_rx) = mpsc::channel::<(u32, Option<image::DynamicImage>)>(16);
+
     loop {
         terminal.draw(|f| ui::draw(f, &app))?;
 
@@ -162,6 +168,40 @@ async fn run(
                     app.wizard_state.error = Some(
                         "DepotDownloader may be waiting for input. Press [R] to restart with terminal mode.".into()
                     );
+                }
+            }
+        }
+
+        // Receive loaded images
+        while let Ok((app_id, maybe_img)) = image_rx.try_recv() {
+            app.image_state.pending_fetches.remove(&app_id);
+            if let Some(img) = maybe_img {
+                app.image_state.loaded_images.insert(app_id, img);
+            }
+        }
+
+        // Trigger image fetch for selected game if needed
+        if app.image_picker.is_some() {
+            if let Some(game) = app.selected_game() {
+                let app_id = game.app_id;
+                if !app.image_state.loaded_images.contains_key(&app_id)
+                    && !app.image_state.pending_fetches.contains(&app_id)
+                {
+                    app.image_state.pending_fetches.insert(app_id);
+                    let tx = image_tx.clone();
+                    tokio::spawn(async move {
+                        let result = async {
+                            let images_dir = rewind_core::image_cache::images_dir()?;
+                            let bytes = match rewind_core::image_cache::load_cached_hero(&images_dir, app_id) {
+                                Some(b) => b,
+                                None => rewind_core::image_cache::fetch_and_cache_hero(&images_dir, app_id).await?,
+                            };
+                            let img = image::load_from_memory(&bytes)?;
+                            Ok::<_, Box<dyn std::error::Error + Send + Sync>>(img)
+                        }
+                        .await;
+                        let _ = tx.send((app_id, result.ok())).await;
+                    });
                 }
             }
         }
