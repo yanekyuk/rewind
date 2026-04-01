@@ -27,10 +27,9 @@ Centralized in a new `theme.rs` module, replacing all hardcoded inline colors.
 
 ### Steam CDN URLs
 
-Two images per game, keyed by App ID:
+One image per game, keyed by App ID:
 
-- **Background:** `https://cdn.akamai.steamstatic.com/steam/apps/{appid}/library_hero.jpg` (hero art)
-- **Logo:** `https://cdn.akamai.steamstatic.com/steam/apps/{appid}/logo.png` (transparent game logo)
+- **Hero image:** `https://cdn.akamai.steamstatic.com/steam/apps/{appid}/library_hero.jpg`
 
 ### Rendering
 
@@ -46,9 +45,10 @@ Uses the `ratatui-image` crate with auto-detected protocol support:
 ```
 ┌─ Detail Panel ──────────────────────────────┐
 │ ┌─────────────────────────────────────────┐  │
-│ │         library_hero background         │  │
-│ │            with logo overlay            │  │
+│ │                                         │  │
+│ │         library_hero image              │  │
 │ │              (top ~40%)                 │  │
+│ │                                         │  │
 │ └─────────────────────────────────────────┘  │
 │                                              │
 │  Game Name              App ID: 12345        │
@@ -61,7 +61,7 @@ Uses the `ratatui-image` crate with auto-detected protocol support:
 └──────────────────────────────────────────────┘
 ```
 
-If images aren't supported or haven't loaded yet, the top image area is absent and text info fills the panel as it does today.
+Only the hero image is displayed as an inline image. The logo PNG is not used — the game name is rendered as styled text below the image, which is more reliable in terminal rendering. If images aren't supported or haven't loaded yet, the image area is absent and text info fills the panel as it does today.
 
 ### Disk Cache
 
@@ -71,7 +71,7 @@ Images are cached on disk in the platform-appropriate data directory:
 - **macOS:** `~/Library/Application Support/rewind/images/`
 - **Windows:** `%APPDATA%/rewind/images/`
 
-Files are named `{appid}_hero.jpg` and `{appid}_logo.png`.
+Files are named `{appid}_hero.jpg`.
 
 **Loading flow on game selection:**
 
