@@ -29,6 +29,8 @@ pub enum DepotProgress {
     Line(String),
     /// DepotDownloader binary is ready at this path; interactive download can start.
     ReadyToDownload { binary: std::path::PathBuf },
+    /// DepotDownloader is waiting for user input (e.g. password, Steam Guard).
+    Prompt(String),
     Done,
     Error(String),
 }
@@ -86,9 +88,41 @@ pub fn depot_downloader_path(bin_dir: &Path) -> PathBuf {
     { bin_dir.join("DepotDownloader") }
 }
 
-/// Check whether dotnet is available on PATH.
+/// Check whether the .NET runtime is available.
+///
+/// First checks PATH, then falls back to well-known installation directories
+/// so users don't need to configure their PATH after a default install.
 pub async fn check_dotnet() -> bool {
-    Command::new("dotnet")
+    // 1. Try PATH first.
+    if try_dotnet("dotnet").await {
+        return true;
+    }
+    // 2. Check common installation paths.
+    #[cfg(target_os = "macos")]
+    const KNOWN_PATHS: &[&str] = &[
+        "/usr/local/share/dotnet/dotnet",
+        "/opt/homebrew/bin/dotnet",
+    ];
+    #[cfg(target_os = "linux")]
+    const KNOWN_PATHS: &[&str] = &[
+        "/usr/share/dotnet/dotnet",
+        "/usr/lib/dotnet/dotnet",
+        "/snap/dotnet-sdk/current/dotnet",
+    ];
+    #[cfg(target_os = "windows")]
+    const KNOWN_PATHS: &[&str] = &[
+        r"C:\Program Files\dotnet\dotnet.exe",
+    ];
+    for path in KNOWN_PATHS {
+        if try_dotnet(path).await {
+            return true;
+        }
+    }
+    false
+}
+
+async fn try_dotnet(cmd: &str) -> bool {
+    Command::new(cmd)
         .arg("--version")
         .output()
         .await
@@ -162,6 +196,74 @@ pub async fn ensure_depot_downloader(bin_dir: &Path) -> Result<PathBuf, DepotErr
     download_depot_downloader(bin_dir).await
 }
 
+/// Check whether a partial output line looks like a credential prompt.
+fn looks_like_prompt(line: &str) -> bool {
+    let lower = line.to_lowercase();
+    lower.contains("password") || lower.contains("guard") || lower.contains("2fa") || lower.contains("code")
+}
+
+/// Read from an async reader byte-by-byte, flushing partial lines after a timeout.
+/// This detects prompts like "Password: " that don't end with a newline.
+async fn stream_output(
+    reader: impl tokio::io::AsyncRead + Unpin,
+    tx: mpsc::Sender<DepotProgress>,
+) {
+    use tokio::io::AsyncReadExt;
+
+    let mut buf = [0u8; 1024];
+    let mut line_buf = Vec::new();
+    let mut reader = reader;
+
+    loop {
+        let read_result = tokio::time::timeout(
+            std::time::Duration::from_millis(500),
+            reader.read(&mut buf),
+        )
+        .await;
+
+        match read_result {
+            Ok(Ok(0)) => break, // EOF
+            Ok(Ok(n)) => {
+                for &byte in &buf[..n] {
+                    if byte == b'\n' || byte == b'\r' {
+                        if !line_buf.is_empty() {
+                            let line = String::from_utf8_lossy(&line_buf).to_string();
+                            let msg = if looks_like_prompt(&line) {
+                                DepotProgress::Prompt(line)
+                            } else {
+                                DepotProgress::Line(line)
+                            };
+                            let _ = tx.send(msg).await;
+                            line_buf.clear();
+                        }
+                    } else {
+                        line_buf.push(byte);
+                    }
+                }
+            }
+            Ok(Err(_)) => break, // read error
+            Err(_) => {
+                // Timeout — flush partial line (likely a prompt waiting for input).
+                if !line_buf.is_empty() {
+                    let line = String::from_utf8_lossy(&line_buf).to_string();
+                    let msg = if looks_like_prompt(&line) {
+                        DepotProgress::Prompt(line)
+                    } else {
+                        DepotProgress::Line(line)
+                    };
+                    let _ = tx.send(msg).await;
+                    line_buf.clear();
+                }
+            }
+        }
+    }
+    // Flush any remaining bytes.
+    if !line_buf.is_empty() {
+        let line = String::from_utf8_lossy(&line_buf).to_string();
+        let _ = tx.send(DepotProgress::Line(line)).await;
+    }
+}
+
 /// Run DepotDownloader with inherited stdio (interactive — handles password/Steam Guard prompts).
 pub async fn run_depot_downloader_interactive(
     binary: &Path,
@@ -187,7 +289,9 @@ pub async fn run_depot_downloader_interactive(
     }
 }
 
-/// Run DepotDownloader and stream output lines via the given mpsc sender.
+/// Run DepotDownloader with piped stdin/stdout/stderr.
+/// Returns a ChildStdin handle so the caller can forward credential input.
+/// Output is streamed via the mpsc sender, with prompt detection.
 pub async fn run_depot_downloader(
     binary: &Path,
     app_id: u32,
@@ -196,9 +300,7 @@ pub async fn run_depot_downloader(
     username: &str,
     cache_dir: &Path,
     tx: mpsc::Sender<DepotProgress>,
-) -> Result<(), DepotError> {
-    use tokio::io::{AsyncBufReadExt, BufReader};
-
+) -> Result<tokio::process::ChildStdin, DepotError> {
     std::fs::create_dir_all(cache_dir)?;
 
     let args = build_args(
@@ -211,41 +313,47 @@ pub async fn run_depot_downloader(
 
     let mut child = Command::new(binary)
         .args(&args)
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()?;
 
+    let stdin = child.stdin.take().unwrap();
     let stdout = child.stdout.take().unwrap();
     let stderr = child.stderr.take().unwrap();
 
     let tx_out = tx.clone();
     let tx_err = tx.clone();
 
-    let stdout_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stdout).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            let _ = tx_out.send(DepotProgress::Line(line)).await;
+    tokio::spawn(async move {
+        stream_output(stdout, tx_out).await;
+    });
+    tokio::spawn(async move {
+        stream_output(stderr, tx_err).await;
+    });
+
+    let tx_done = tx.clone();
+    tokio::spawn(async move {
+        let status = child.wait().await;
+        match status {
+            Ok(s) if s.success() => {
+                let _ = tx_done.send(DepotProgress::Done).await;
+            }
+            Ok(s) => {
+                let code = s.code().unwrap_or(-1);
+                let _ = tx_done
+                    .send(DepotProgress::Error(format!("exit code {}", code)))
+                    .await;
+            }
+            Err(e) => {
+                let _ = tx_done
+                    .send(DepotProgress::Error(format!("process error: {}", e)))
+                    .await;
+            }
         }
     });
 
-    let stderr_task = tokio::spawn(async move {
-        let mut reader = BufReader::new(stderr).lines();
-        while let Ok(Some(line)) = reader.next_line().await {
-            let _ = tx_err.send(DepotProgress::Line(line)).await;
-        }
-    });
-
-    let status = child.wait().await?;
-    let _ = tokio::join!(stdout_task, stderr_task);
-
-    if status.success() {
-        let _ = tx.send(DepotProgress::Done).await;
-        Ok(())
-    } else {
-        let code = status.code().unwrap_or(-1);
-        let _ = tx.send(DepotProgress::Error(format!("exit code {}", code))).await;
-        Err(DepotError::ExitFailure(code))
-    }
+    Ok(stdin)
 }
 
 #[cfg(test)]

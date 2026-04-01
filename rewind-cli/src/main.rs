@@ -124,6 +124,9 @@ async fn run(
                         }
                     }
                 }
+                rewind_core::depot::DepotProgress::Prompt(line) => {
+                    app.wizard_state.progress_lines.push(line);
+                }
                 rewind_core::depot::DepotProgress::Done => {
                     // Should not be reached (interactive path handles completion), but handle gracefully.
                     app.wizard_state.is_downloading = false;
