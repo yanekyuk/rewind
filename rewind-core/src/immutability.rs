@@ -98,6 +98,7 @@ fn platform_lock(path: &Path, lock: bool) -> Result<(), ImmutabilityError> {
     set_readonly_std(path, lock)
 }
 
+#[cfg(target_os = "windows")]
 fn set_readonly_std(path: &Path, readonly: bool) -> Result<(), ImmutabilityError> {
     let mut perms = std::fs::metadata(path)?.permissions();
     perms.set_readonly(readonly);

@@ -323,14 +323,11 @@ pub async fn run_depot_downloader(
     // Detach from the controlling terminal so .NET's Console.Write
     // cannot write directly to /dev/tty and corrupt the TUI.
     #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt;
-        unsafe {
-            cmd.pre_exec(|| {
-                libc::setsid();
-                Ok(())
-            });
-        }
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
     }
 
     let mut child = cmd.spawn()?;
