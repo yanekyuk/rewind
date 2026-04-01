@@ -7,6 +7,39 @@ use std::path::PathBuf;
 use tokio::sync::mpsc;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum StepStatus {
+    Pending,
+    InProgress,
+    Done,
+    Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum StepKind {
+    CheckDotnet,
+    DownloadDepot,
+    DownloadManifest,
+    BackupFiles,
+    LinkFiles,
+    PatchManifest,
+    LockManifest,
+}
+
+impl StepKind {
+    pub fn label(&self) -> &'static str {
+        match self {
+            StepKind::CheckDotnet => "Checking .NET runtime",
+            StepKind::DownloadDepot => "Downloading DepotDownloader",
+            StepKind::DownloadManifest => "Downloading manifest files",
+            StepKind::BackupFiles => "Backing up current files",
+            StepKind::LinkFiles => "Linking manifest files to game directory",
+            StepKind::PatchManifest => "Patching Steam manifest",
+            StepKind::LockManifest => "Locking manifest file",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Screen {
     FirstRun,
     Main,
@@ -24,6 +57,14 @@ pub struct DowngradeWizardState {
     pub error: Option<String>,
     /// When set, pressing [O] opens this URL instead of the SteamDB manifests page.
     pub error_url: Option<String>,
+    /// High-level process steps with their status.
+    pub steps: Vec<(StepKind, StepStatus)>,
+    /// Raw output lines from DepotDownloader (shown in the bordered pane).
+    pub depot_lines: Vec<String>,
+    /// When Some, a credential prompt is active and this holds the user's input so far.
+    pub prompt_input: Option<String>,
+    /// The prompt label from DepotDownloader (e.g. "Password:").
+    pub prompt_label: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -64,6 +105,8 @@ pub struct App {
     pub progress_rx: Option<mpsc::Receiver<DepotProgress>>,
     /// Set when the binary is ready and the TUI should suspend for interactive download.
     pub pending_download: Option<PendingDownload>,
+    /// Stdin handle for the running DepotDownloader process (used to forward credential input).
+    pub depot_stdin: Option<tokio::process::ChildStdin>,
     pub should_quit: bool,
 }
 
@@ -81,7 +124,14 @@ impl App {
             version_picker_state: VersionPickerState::default(),
             progress_rx: None,
             pending_download: None,
+            depot_stdin: None,
             should_quit: false,
+        }
+    }
+
+    pub fn set_step_status(&mut self, kind: &StepKind, status: StepStatus) {
+        if let Some(step) = self.wizard_state.steps.iter_mut().find(|s| s.0 == *kind) {
+            step.1 = status;
         }
     }
 
