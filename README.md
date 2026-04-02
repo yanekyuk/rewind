@@ -14,6 +14,7 @@
 │   Elden Ring    │  Installed: manifest abc123        │
 │   Dark Souls III│  Spoofed as: manifest def456       │
 │                 │  Cached:    1.00, 1.01             │
+│                 │  Launch:    -high -novid           │
 │                 │                                    │
 │                 │  [D] Download   [U] Switch version │
 │                 │  [O] Open SteamDB                  │
@@ -29,6 +30,7 @@
 - **Instant version switching** — cached versions switch via symlink repoint, no download needed
 - **Delta caching** — only stores files that differ between manifests, not entire game copies
 - **ACF patching & locking** — patches `appmanifest_*.acf` and locks it to prevent Steam auto-updates
+- **Launch options display** — shows configured Steam launch options in the game detail panel
 - **Auto DepotDownloader setup** — downloads and manages the DepotDownloader binary for you
 - **Persistent config** — Steam credentials and library paths stored once, never asked again
 - **Cross-platform** — Linux, macOS, and Windows
