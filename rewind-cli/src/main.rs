@@ -321,9 +321,7 @@ fn handle_main(app: &mut App, key: KeyCode) {
         KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
         KeyCode::Char('d') => {
             if let Some(g) = app.selected_game() {
-                let url = rewind_core::steamdb::depot_manifests_url(g.depot_id);
                 app.wizard_state = DowngradeWizardState {
-                    steamdb_url: url,
                     app_id: g.app_id,
                     depot_id: g.depot_id,
                     ..Default::default()

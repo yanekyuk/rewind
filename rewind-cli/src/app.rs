@@ -60,7 +60,6 @@ pub enum Screen {
 #[derive(Debug, Default)]
 pub struct DowngradeWizardState {
     pub manifest_input: String,
-    pub steamdb_url: String,
     pub app_id: u32,
     pub depot_id: u32,
     pub is_downloading: bool,
