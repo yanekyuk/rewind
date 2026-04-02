@@ -456,7 +456,7 @@ fn handle_main(app: &mut App, key: KeyCode) {
                                     if rewind_core::localconfig::write_launch_options(&lc_path, game_id, &launch_cmd).is_ok() {
                                         if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game_id) {
                                             if let Some(ref mut reshade) = entry.reshade {
-                                                reshade.original_launch_options = orig;
+                                                reshade.original_launch_options = Some(orig.unwrap_or_default());
                                             }
                                         }
                                         break;
@@ -1054,7 +1054,9 @@ fn finalize_reshade(app: &mut App) {
         for lc_path in &localconfig_paths {
             let orig = rewind_core::localconfig::read_launch_options(lc_path, game.app_id);
             if rewind_core::localconfig::write_launch_options(lc_path, game.app_id, &launch_cmd).is_ok() {
-                original = orig;
+                // Use Some("") when there were no prior options so that
+                // original_launch_options.is_some() reliably means "write succeeded".
+                original = Some(orig.unwrap_or_default());
                 app.reshade_state.lines.push("Steam launch options updated.".into());
                 break;
             }
