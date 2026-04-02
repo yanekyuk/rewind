@@ -1,12 +1,12 @@
 use crate::app::App;
 use crate::ui::theme;
+use rewind_core::steamdb;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap},
 };
 use ratatui_image::StatefulImage;
-use rewind_core::steamdb;
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
@@ -40,7 +40,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Status bar
     let status = Paragraph::new(
-        " [↑↓/jk] navigate  [D] downgrade  [U] upgrade  [L] lock  [O] SteamDB  [S] settings  [Q] quit ",
+        " [↑↓/jk] navigate  [D] download  [U] switch version  [O] SteamDB  [S] settings  [Q] quit ",
     )
     .style(theme::help_bar());
     f.render_widget(status, outer[2]);
@@ -102,12 +102,10 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
     let entry = app.games_config.games.iter().find(|e| e.app_id == game_app_id);
 
     let status_line = match entry {
-        Some(e) if e.acf_locked && e.active_manifest_id != e.latest_manifest_id => {
-            "▼ Downgraded (locked)"
-        }
-        Some(e) if e.acf_locked => "✓ Up to date (locked)",
-        Some(_) => "  Managed",
-        None => "  Unmanaged",
+        Some(e) if e.active_manifest_id != e.latest_manifest_id => "▼ Updates disabled",
+        Some(e) if e.acf_locked => "✓ Updates disabled",
+        Some(_) => "✓ Updates enabled",
+        None => "  Updates enabled",
     };
 
     let active_manifest = entry
@@ -118,17 +116,22 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
         .map(|e| e.cached_manifest_ids.join(", "))
         .unwrap_or_else(|| "none".into());
 
-    let steamdb_url = steamdb::depot_manifests_url(game.depot_id);
+    let spoofed_line = match entry {
+        Some(e) if e.active_manifest_id != e.latest_manifest_id => {
+            format!("\n  Spoofed as: {}", e.latest_manifest_id)
+        }
+        _ => String::new(),
+    };
 
     let text = format!(
-        "  {name}\n  App ID:  {app_id}\n  Depot:   {depot_id}\n\n  Status:  {status}\n  Active:  {active}\n  Cached:  {cached}\n\n  SteamDB: {url}\n\n  [D] Downgrade / switch version\n  [U] Upgrade / switch version\n  [L] Toggle ACF lock\n  [O] Open app on SteamDB",
+        "  {name}\n  App ID:    {app_id}\n  Depot:     {depot_id}\n\n  Status:    {status}\n  Installed: {active}{spoofed}\n  Cached:    {cached}\n\n  [D] Download new version\n  [U] Switch version\n  [O] Open app on SteamDB",
         name = game.name,
         app_id = game.app_id,
         depot_id = game.depot_id,
         status = status_line,
         active = active_manifest,
+        spoofed = spoofed_line,
         cached = cached_list,
-        url = steamdb_url,
     );
 
     let block = Block::default()

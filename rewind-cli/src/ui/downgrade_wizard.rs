@@ -12,7 +12,7 @@ pub fn draw(f: &mut Frame, app: &App) {
     f.render_widget(Clear, area);
 
     let block = Block::default()
-        .title(" Downgrade Game ")
+        .title(" Download New Version ")
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
@@ -34,28 +34,28 @@ pub fn draw(f: &mut Frame, app: &App) {
     }
 }
 
-/// The initial view: SteamDB URL, manifest input, output log, help line.
+/// The initial view: guidance text, manifest input, output log, help line.
 fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),
-            Constraint::Length(3),
-            Constraint::Min(0),
-            Constraint::Length(1),
+            Constraint::Length(6), // guidance text
+            Constraint::Length(3), // manifest input
+            Constraint::Min(0),   // error/output log
+            Constraint::Length(1), // help line
         ])
         .split(area);
 
-    // SteamDB URL
-    let url_block = Block::default()
-        .title(" 1. Open this URL in your browser to find the manifest ID ")
-        .borders(Borders::ALL)
-        .border_style(theme::border())
-        .style(theme::base_bg());
-    let url_para = Paragraph::new(app.wizard_state.steamdb_url.as_str())
-        .style(Style::default().fg(theme::ACCENT).bg(theme::BASE_BG))
-        .block(url_block);
-    f.render_widget(url_para, layout[0]);
+    // Guidance text
+    let guidance = Paragraph::new(
+        " Find your target version:\n \
+         [P] Patches  \u{2014} browse patch notes to find the version you want,\n \
+                        note its date\n \
+         [M] Manifests \u{2014} match the date to find the corresponding\n \
+                        manifest ID",
+    )
+    .style(theme::text());
+    f.render_widget(guidance, layout[0]);
 
     // Manifest ID input
     let cursor = if !app.wizard_state.is_downloading {
@@ -69,7 +69,7 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         theme::input_active()
     };
     let input_block = Block::default()
-        .title(" 2. Enter target manifest ID then press [Enter] ")
+        .title(" Manifest ID ")
         .borders(Borders::ALL)
         .border_style(theme::border_focused())
         .style(theme::base_bg());
@@ -104,7 +104,7 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let help_text = if app.wizard_state.error_url.is_some() {
         " [O] open download page   [Esc] cancel   [Ctrl+C] quit "
     } else {
-        " [O] open SteamDB in browser   [Esc] cancel   [Ctrl+C] quit "
+        " [P] patches   [M] manifests   [Enter] download   [Esc] cancel "
     };
     let help = Paragraph::new(help_text).style(theme::help_bar());
     f.render_widget(help, layout[3]);
