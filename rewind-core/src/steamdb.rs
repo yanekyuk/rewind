@@ -9,6 +9,11 @@ pub fn app_url(app_id: u32) -> String {
     format!("https://www.steamdb.info/app/{}/", app_id)
 }
 
+/// Returns the SteamDB patch notes page URL for a given app ID.
+pub fn app_patchnotes_url(app_id: u32) -> String {
+    format!("https://www.steamdb.info/app/{}/patchnotes/", app_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -23,5 +28,11 @@ mod tests {
     fn app_page_url_test() {
         let url = app_url(3321460);
         assert_eq!(url, "https://www.steamdb.info/app/3321460/");
+    }
+
+    #[test]
+    fn app_patchnotes_url_test() {
+        let url = app_patchnotes_url(3321460);
+        assert_eq!(url, "https://www.steamdb.info/app/3321460/patchnotes/");
     }
 }
