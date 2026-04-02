@@ -10,7 +10,7 @@ pub enum ReshadeError {
     Io(#[from] std::io::Error),
     #[error("http error: {0}")]
     Http(#[from] reqwest::Error),
-    #[error("extraction failed — could not locate 7z stream in installer")]
+    #[error("extraction failed — install p7zip (7z) and try again, or place ReShade64.dll manually in bin/")]
     ExtractionFailed,
     #[error("ReShade installer or DLL not found")]
     NotFound,
@@ -118,6 +118,38 @@ pub fn disable_reshade(game_dir: &Path, api: &ReshadeApi) -> Result<(), ReshadeE
     Ok(())
 }
 
+/// Try to extract `ReShade64.dll` from an NSIS installer using the `7z` CLI tool.
+/// Returns `Ok(true)` on success, `Ok(false)` if `7z` is not installed, `Err` on I/O failure.
+fn try_extract_with_7z_cli(installer: &Path, out_dir: &Path) -> std::io::Result<bool> {
+    // On Windows, 7-Zip installs to a known path. On Unix, it's usually `7z` or `7zz` on PATH.
+    #[cfg(windows)]
+    let candidates: &[&str] = &[
+        r"C:\Program Files\7-Zip\7z.exe",
+        r"C:\Program Files (x86)\7-Zip\7z.exe",
+        "7z",
+    ];
+    #[cfg(not(windows))]
+    let candidates: &[&str] = &["7z", "7zz", "7za"];
+
+    for cmd in candidates {
+        let result = std::process::Command::new(cmd)
+            .args(["e", &installer.to_string_lossy(), "ReShade64.dll", "-y"])
+            .arg(format!("-o{}", out_dir.display()))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+
+        match result {
+            Ok(status) if status.success() => return Ok(true),
+            Ok(_) => return Ok(false),  // 7z found but extraction failed
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(false) // no 7z variant found on PATH
+}
+
 /// Download the official ReShade installer from reshade.me, extract `ReShade64.dll`
 /// from the embedded NSIS 7z stream, and write it to `bin_dir`.
 ///
@@ -154,18 +186,11 @@ pub async fn download_reshade(
 
     let bytes = client.get(&installer_url).send().await?.bytes().await?;
 
-    // NSIS installers embed a 7z-compressed payload. Locate it by 7z magic bytes.
-    const SEVEN_Z_MAGIC: &[u8] = b"\x37\x7a\xbc\xaf\x27\x1c";
-    let offset = bytes
-        .windows(SEVEN_Z_MAGIC.len())
-        .position(|w| w == SEVEN_Z_MAGIC)
-        .ok_or(ReshadeError::ExtractionFailed)?;
-
     let _ = tx.send(ReshadeProgress::Line("Extracting ReShade64.dll...".into())).await;
 
-    // Write the 7z stream to a temp file so sevenz-rust can open it
-    let tmp_7z = std::env::temp_dir().join("rewind_reshade_setup.7z");
-    std::fs::write(&tmp_7z, &bytes[offset..])?;
+    // Write the installer to a temp file for extraction.
+    let tmp_installer = std::env::temp_dir().join("rewind_reshade_setup.exe");
+    std::fs::write(&tmp_installer, &bytes)?;
 
     let tmp_extract = std::env::temp_dir().join("rewind_reshade_extract");
     if tmp_extract.exists() {
@@ -173,10 +198,36 @@ pub async fn download_reshade(
     }
     std::fs::create_dir_all(&tmp_extract)?;
 
-    let decompress_result = sevenz_rust::decompress_file(&tmp_7z, &tmp_extract)
-        .map_err(|e| ReshadeError::SevenZ(e.to_string()));
-    let _ = std::fs::remove_file(&tmp_7z); // clean up 7z regardless of success
-    decompress_result?;
+    // Try `7z` (p7zip) first — it understands NSIS installers regardless of compression type.
+    // Fall back to scanning for a 7z stream (works for older NSIS 7z-compressed builds).
+    let extracted = try_extract_with_7z_cli(&tmp_installer, &tmp_extract)
+        .unwrap_or(false);
+
+    if !extracted {
+        // Fallback: scan for the embedded 7z stream (NSIS 7z-compressed installers).
+        const SEVEN_Z_MAGIC: &[u8] = b"\x37\x7a\xbc\xaf\x27\x1c";
+        let offset = bytes
+            .windows(SEVEN_Z_MAGIC.len())
+            .position(|w| w == SEVEN_Z_MAGIC);
+
+        match offset {
+            Some(off) => {
+                let tmp_7z = std::env::temp_dir().join("rewind_reshade_setup.7z");
+                std::fs::write(&tmp_7z, &bytes[off..])?;
+                let decompress_result = sevenz_rust::decompress_file(&tmp_7z, &tmp_extract)
+                    .map_err(|e| ReshadeError::SevenZ(e.to_string()));
+                let _ = std::fs::remove_file(&tmp_7z);
+                decompress_result?;
+            }
+            None => {
+                let _ = std::fs::remove_file(&tmp_installer);
+                let _ = std::fs::remove_dir_all(&tmp_extract);
+                return Err(ReshadeError::ExtractionFailed);
+            }
+        }
+    }
+
+    let _ = std::fs::remove_file(&tmp_installer);
 
     // Find ReShade64.dll in extracted output (may be at root or in a subdir)
     let dll_src = walkdir::WalkDir::new(&tmp_extract)
