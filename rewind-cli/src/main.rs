@@ -321,18 +321,24 @@ fn handle_main(app: &mut App, key: KeyCode) {
         KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
         KeyCode::Char('d') => {
             if let Some(g) = app.selected_game() {
+                let steam_running = rewind_core::steam_guard::is_steam_running();
                 app.wizard_state = DowngradeWizardState {
                     app_id: g.app_id,
                     depot_id: g.depot_id,
+                    steam_warning: steam_running,
                     ..Default::default()
                 };
                 app.screen = Screen::DowngradeWizard;
             }
         }
         KeyCode::Char('u') => {
-            // Upgrade: open version picker (user selects a different cached version)
             if app.selected_game_entry().map(|e| e.cached_manifest_ids.len() > 1).unwrap_or(false) {
-                app.version_picker_state.selected_index = 0;
+                let steam_running = rewind_core::steam_guard::is_steam_running();
+                app.version_picker_state = app::VersionPickerState {
+                    selected_index: 0,
+                    steam_warning: steam_running,
+                    error: None,
+                };
                 app.screen = Screen::VersionPicker;
             }
         }
@@ -496,6 +502,12 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                     return;
                 }
 
+                if rewind_core::steam_guard::is_steam_running() {
+                    app.version_picker_state.error =
+                        Some("Steam is running. Quit Steam before switching versions.".into());
+                    return;
+                }
+
                 let is_latest = app
                     .selected_game_entry()
                     .map(|e| e.latest_manifest_id == manifest_id)
@@ -598,6 +610,11 @@ fn start_download(app: &mut App) {
         app.wizard_state.error = Some("Steam username not set. Go to [S]ettings.".into());
         return;
     };
+
+    if rewind_core::steam_guard::is_steam_running() {
+        app.wizard_state.error = Some("Steam is running. Quit Steam before downloading.".into());
+        return;
+    }
 
     let Ok(bin_dir) = config::bin_dir() else { return };
     let Some(game) = app.selected_game().cloned() else { return };
