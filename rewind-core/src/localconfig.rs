@@ -56,6 +56,10 @@ pub fn write_launch_options(
 ) -> Result<(), LocalConfigError> {
     let content = std::fs::read_to_string(path)?;
     let updated = set_launch_options(&content, app_id, options);
+    if updated == content && !options.is_empty() {
+        // set_launch_options made no change — app_id not present in file
+        return Err(LocalConfigError::AppNotFound(app_id));
+    }
     std::fs::write(path, updated)?;
     Ok(())
 }
@@ -265,6 +269,17 @@ mod tests {
 
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("WINEDLLOVERRIDES=\"d3d9=n,b\" %command%"));
+    }
+
+    #[test]
+    fn write_returns_error_when_app_not_found() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("localconfig.vdf");
+        std::fs::write(&path, SAMPLE_VDF).unwrap();
+
+        let result = write_launch_options(&path, 99999, "WINEDLLOVERRIDES=\"dxgi=n,b\" %command%");
+        assert!(matches!(result, Err(LocalConfigError::AppNotFound(99999))));
     }
 
     #[test]

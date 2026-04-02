@@ -107,10 +107,20 @@ fn draw_downloading(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .collect();
 
     if let Some(ref err) = app.reshade_state.error {
+        let bin_path_hint = {
+            #[cfg(target_os = "linux")]
+            { "  ~/.local/share/rewind/bin/" }
+            #[cfg(target_os = "macos")]
+            { "  ~/Library/Application Support/rewind/bin/" }
+            #[cfg(windows)]
+            { "  %APPDATA%\\rewind\\bin\\" }
+            #[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+            { "  rewind/bin/" }
+        };
         let error_items: Vec<ListItem> = vec![
             ListItem::new(format!("Error: {}", err)).style(theme::status_error()),
             ListItem::new("Place ReShade64.dll manually in:").style(theme::text_secondary()),
-            ListItem::new("  ~/.local/share/rewind/bin/").style(theme::text_secondary()),
+            ListItem::new(bin_path_hint).style(theme::text_secondary()),
         ];
         let list = List::new(error_items);
         f.render_widget(list, layout[0]);

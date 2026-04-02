@@ -409,9 +409,11 @@ fn handle_main(app: &mut App, key: KeyCode) {
                             {
                                 let restore = original_launch_opts.as_deref().unwrap_or("");
                                 for lc_path in rewind_core::localconfig::find_localconfig_paths() {
-                                    let _ = rewind_core::localconfig::write_launch_options(
+                                    if rewind_core::localconfig::write_launch_options(
                                         &lc_path, game_id, restore,
-                                    );
+                                    ).is_ok() {
+                                        break;
+                                    }
                                 }
                             }
                             if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game_id) {
@@ -449,6 +451,21 @@ fn handle_main(app: &mut App, key: KeyCode) {
                             if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game_id) {
                                 if let Some(ref mut reshade) = entry.reshade {
                                     reshade.enabled = true;
+                                }
+                            }
+                            #[cfg(target_os = "linux")]
+                            {
+                                let launch_cmd = api.linux_launch_command();
+                                for lc_path in rewind_core::localconfig::find_localconfig_paths() {
+                                    let orig = rewind_core::localconfig::read_launch_options(&lc_path, game_id);
+                                    if rewind_core::localconfig::write_launch_options(&lc_path, game_id, &launch_cmd).is_ok() {
+                                        if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game_id) {
+                                            if let Some(ref mut reshade) = entry.reshade {
+                                                reshade.original_launch_options = orig;
+                                            }
+                                        }
+                                        break;
+                                    }
                                 }
                             }
                             app.reshade_state.inline_error = None;

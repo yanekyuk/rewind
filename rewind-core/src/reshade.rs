@@ -173,19 +173,27 @@ pub async fn download_reshade(
     }
     std::fs::create_dir_all(&tmp_extract)?;
 
-    sevenz_rust::decompress_file(&tmp_7z, &tmp_extract)
-        .map_err(|e| ReshadeError::SevenZ(e.to_string()))?;
-    let _ = std::fs::remove_file(&tmp_7z);
+    let decompress_result = sevenz_rust::decompress_file(&tmp_7z, &tmp_extract)
+        .map_err(|e| ReshadeError::SevenZ(e.to_string()));
+    let _ = std::fs::remove_file(&tmp_7z); // clean up 7z regardless of success
+    decompress_result?;
 
     // Find ReShade64.dll in extracted output (may be at root or in a subdir)
     let dll_src = walkdir::WalkDir::new(&tmp_extract)
         .into_iter()
         .filter_map(|e| e.ok())
         .find(|e| e.file_name() == std::ffi::OsStr::new("ReShade64.dll"))
-        .map(|e| e.path().to_path_buf())
-        .ok_or(ReshadeError::NotFound)?;
+        .map(|e| e.path().to_path_buf());
 
-    std::fs::copy(&dll_src, &dest)?;
+    let Some(dll_src) = dll_src else {
+        let _ = std::fs::remove_dir_all(&tmp_extract);
+        return Err(ReshadeError::NotFound);
+    };
+
+    if let Err(e) = std::fs::copy(&dll_src, &dest) {
+        let _ = std::fs::remove_dir_all(&tmp_extract);
+        return Err(ReshadeError::Io(e));
+    }
     let _ = std::fs::remove_dir_all(&tmp_extract);
 
     #[cfg(unix)]
