@@ -9,10 +9,6 @@ use ratatui::{
 pub fn draw(f: &mut Frame, _app: &App) {
     let area = f.area();
 
-    // Background fill
-    f.render_widget(Clear, area);
-    f.render_widget(Paragraph::new("").style(theme::base_bg()), area);
-
     let dialog_area = centered_rect(60, 14, area);
     f.render_widget(Clear, dialog_area);
 
@@ -21,8 +17,7 @@ pub fn draw(f: &mut Frame, _app: &App) {
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(theme::border_accent())
-        .style(theme::base_bg());
+        .border_style(theme::border_accent());
 
     let inner = block.inner(dialog_area);
     f.render_widget(block, dialog_area);

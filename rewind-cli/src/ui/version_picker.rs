@@ -15,8 +15,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         .title_alignment(Alignment::Center)
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
-        .border_style(theme::border_accent())
-        .style(theme::base_bg());
+        .border_style(theme::border_accent());
 
     let inner = block.inner(area);
     f.render_widget(block, area);

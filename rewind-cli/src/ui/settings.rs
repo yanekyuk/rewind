@@ -3,15 +3,12 @@ use crate::ui::theme;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
-    widgets::{Block, Borders, Clear, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
 };
 
 pub fn draw(f: &mut Frame, app: &App) {
     let area = f.area();
 
-    // Background fill
-    f.render_widget(Clear, area);
-    f.render_widget(Paragraph::new("").style(theme::base_bg()), area);
 
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -57,7 +54,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         .title(" Steam Username ")
         .borders(Borders::ALL)
         .border_style(username_border_style)
-        .style(theme::base_bg());
+;
     let username_para =
         Paragraph::new(format!("{}{}", app.settings_state.username_input, cursor))
             .style(username_text_style)
@@ -81,7 +78,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         .title(" Add Steam Library Path (Enter to add) ")
         .borders(Borders::ALL)
         .border_style(library_border_style)
-        .style(theme::base_bg());
+;
     let library_para =
         Paragraph::new(format!("{}{}", app.settings_state.library_input, lib_cursor))
             .style(library_text_style)
@@ -100,7 +97,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         .title(" Configured Libraries ")
         .borders(Borders::ALL)
         .border_style(theme::border())
-        .style(theme::base_bg());
+;
 
     if lib_items.is_empty() {
         let msg = Paragraph::new("  No libraries configured yet.")

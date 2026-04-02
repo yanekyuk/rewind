@@ -2,40 +2,45 @@ use crate::app::App;
 use crate::ui::theme;
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout},
-    widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph, Wrap},
+    layout::{Alignment, Constraint, Direction, Layout},
+    widgets::{Block, BorderType, Borders, List, ListItem, Paragraph, Wrap},
 };
 use ratatui_image::StatefulImage;
 use rewind_core::steamdb;
 
+const ASCII_LOGO: &str = r#"
+ ██████╗ ███████╗██╗    ██╗██╗███╗   ██╗██████╗
+ ██╔══██╗██╔════╝██║    ██║██║████╗  ██║██╔══██╗
+ ██████╔╝█████╗  ██║ █╗ ██║██║██╔██╗ ██║██║  ██║
+ ██╔══██╗██╔══╝  ██║███╗██║██║██║╚██╗██║██║  ██║
+ ██║  ██║███████╗╚███╔███╔╝██║██║ ╚████║██████╔╝
+ ╚═╝  ╚═╝╚══════╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝╚═════╝"#;
+
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
-
-    // Background fill
-    f.render_widget(Clear, area);
-    f.render_widget(Paragraph::new("").style(theme::base_bg()), area);
 
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),
             Constraint::Min(0),
             Constraint::Length(1),
         ])
         .split(area);
 
-    // Title bar
-    let title = Paragraph::new(" rewind — Steam Version Manager ")
-        .style(theme::title());
-    f.render_widget(title, outer[0]);
-
-    // Content
+    // Content: left column (logo + games), right column (detail)
     let content = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
-        .split(outer[1]);
+        .split(outer[0]);
 
-    draw_game_list(f, app, content[0]);
+    // Left column: ASCII logo on top, games list below
+    let left = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Length(9), Constraint::Min(0)])
+        .split(content[0]);
+
+    draw_logo(f, left[0]);
+    draw_game_list(f, app, left[1]);
     draw_detail_panel(f, app, content[1]);
 
     // Status bar
@@ -43,7 +48,22 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         " [↑↓/jk] navigate  [D] downgrade  [U] upgrade  [L] lock  [O] SteamDB  [S] settings  [Q] quit ",
     )
     .style(theme::help_bar());
-    f.render_widget(status, outer[2]);
+    f.render_widget(status, outer[1]);
+}
+
+fn draw_logo(f: &mut Frame, area: ratatui::layout::Rect) {
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_type(BorderType::Rounded)
+        .border_style(theme::border_accent());
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let logo = Paragraph::new(ASCII_LOGO)
+        .style(theme::title())
+        .alignment(Alignment::Center);
+    f.render_widget(logo, inner);
 }
 
 fn draw_game_list(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
@@ -73,8 +93,7 @@ fn draw_game_list(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .title(" GAMES ")
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .border_style(theme::border())
-        .style(theme::base_bg());
+        .border_style(theme::border());
 
     let list = List::new(items).block(block);
     f.render_widget(list, area);
@@ -85,8 +104,7 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
         let block = Block::default()
             .borders(Borders::ALL)
             .border_type(BorderType::Plain)
-            .border_style(theme::border())
-            .style(theme::base_bg());
+            .border_style(theme::border());
         let inner = block.inner(area);
         f.render_widget(block, area);
         let msg = Paragraph::new(
@@ -134,8 +152,7 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
     let block = Block::default()
         .borders(Borders::ALL)
         .border_type(BorderType::Plain)
-        .border_style(theme::border())
-        .style(theme::base_bg());
+        .border_style(theme::border());
 
     let inner = block.inner(area);
     f.render_widget(block, area);

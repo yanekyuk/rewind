@@ -17,7 +17,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         .borders(Borders::ALL)
         .border_type(BorderType::Rounded)
         .border_style(theme::border_focused())
-        .style(theme::base_bg());
+;
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -51,9 +51,9 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .title(" 1. Open this URL in your browser to find the manifest ID ")
         .borders(Borders::ALL)
         .border_style(theme::border())
-        .style(theme::base_bg());
+;
     let url_para = Paragraph::new(app.wizard_state.steamdb_url.as_str())
-        .style(Style::default().fg(theme::ACCENT).bg(theme::BASE_BG))
+        .style(Style::default().fg(theme::ACCENT))
         .block(url_block);
     f.render_widget(url_para, layout[0]);
 
@@ -72,7 +72,7 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .title(" 2. Enter target manifest ID then press [Enter] ")
         .borders(Borders::ALL)
         .border_style(theme::border_focused())
-        .style(theme::base_bg());
+;
     let input_para =
         Paragraph::new(format!("{}{}", app.wizard_state.manifest_input, cursor))
             .style(input_style)
@@ -81,13 +81,13 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
 
     // Error / output log
     let (log_title, log_border_style) = if app.wizard_state.error.is_some() {
-        (" Error ", Style::default().fg(theme::ERROR).bg(theme::BASE_BG))
+        (" Error ", Style::default().fg(theme::ERROR))
     } else {
         (" Output ", theme::border())
     };
 
     let log_items: Vec<ListItem> = if let Some(err) = &app.wizard_state.error {
-        vec![ListItem::new(err.as_str()).style(Style::default().fg(theme::ERROR).bg(theme::BASE_BG))]
+        vec![ListItem::new(err.as_str()).style(Style::default().fg(theme::ERROR))]
     } else {
         vec![]
     };
@@ -96,7 +96,7 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .title(log_title)
         .borders(Borders::ALL)
         .border_style(log_border_style)
-        .style(theme::base_bg());
+;
     let log_list = List::new(log_items).block(log_block);
     f.render_widget(log_list, layout[2]);
 
@@ -165,7 +165,7 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         .title(" DepotDownloader ")
         .borders(Borders::ALL)
         .border_style(theme::border())
-        .style(theme::base_bg());
+;
 
     let depot_inner_height = depot_block.inner(layout[1]).height as usize;
     let depot_items: Vec<ListItem> = app
@@ -200,7 +200,7 @@ fn draw_download_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
             .title(format!(" {} ", label))
             .borders(Borders::ALL)
             .border_style(theme::border_accent())
-            .style(theme::base_bg());
+    ;
         let prompt_para = Paragraph::new(display_text)
             .style(theme::input_active())
             .block(prompt_block);
