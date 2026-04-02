@@ -197,6 +197,65 @@ pub async fn download_reshade(
     Ok(dest)
 }
 
+/// Download the `reshade-shaders` community pack from GitHub into `shaders_dir`.
+///
+/// Skips download if `shaders_dir` already exists.
+/// Progress lines are sent over `tx`; the caller sends final `Done`.
+pub async fn download_shaders(
+    shaders_dir: &Path,
+    tx: mpsc::Sender<ReshadeProgress>,
+) -> Result<(), ReshadeError> {
+    if shaders_dir.exists() {
+        return Ok(());
+    }
+
+    let _ = tx.send(ReshadeProgress::Line("Downloading reshade-shaders...".into())).await;
+
+    let client = reqwest::Client::builder()
+        .user_agent("rewind-cli/0.1")
+        .build()?;
+
+    let zip_url = "https://github.com/crosire/reshade-shaders/archive/refs/heads/slim.zip";
+    let bytes = client.get(zip_url).send().await?.bytes().await?;
+
+    let _ = tx.send(ReshadeProgress::Line("Extracting shaders...".into())).await;
+
+    let cursor = std::io::Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(cursor)?;
+
+    std::fs::create_dir_all(shaders_dir)?;
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let name = file.name().to_string();
+
+        // Strip the top-level "reshade-shaders-slim/" prefix
+        let stripped = name
+            .splitn(2, '/')
+            .nth(1)
+            .unwrap_or("")
+            .to_string();
+
+        if stripped.is_empty() {
+            continue;
+        }
+
+        let dest = shaders_dir.join(&stripped);
+
+        if file.is_dir() {
+            std::fs::create_dir_all(&dest)?;
+        } else {
+            if let Some(parent) = dest.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut outfile = std::fs::File::create(&dest)?;
+            std::io::copy(&mut file, &mut outfile)?;
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -340,5 +399,19 @@ mod tests {
         assert_eq!(result, bin_dir.join("ReShade64.dll"));
         // No Line messages expected — returns immediately without sending anything
         assert!(rx.try_recv().is_err()); // channel empty
+    }
+
+    #[tokio::test]
+    async fn download_shaders_skips_when_dir_exists() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let shaders_dir = tmp.path().join("reshade-shaders");
+        std::fs::create_dir_all(&shaders_dir).unwrap();
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        download_shaders(&shaders_dir, tx).await.unwrap();
+
+        // No messages sent — skipped immediately
+        assert!(rx.try_recv().is_err());
     }
 }
