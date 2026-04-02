@@ -217,6 +217,61 @@ fn extract_quoted_only(s: &str) -> Option<&str> {
     }
 }
 
+fn extract_launch_options_from_vdf(content: &str, app_id: u32) -> Option<String> {
+    let app_id_key = format!("\"{}\"", app_id);
+    let mut in_apps = false;
+    let mut in_target_app = false;
+    let mut depth = 0i32;
+    let mut apps_depth = -1i32;
+    let mut app_depth = -1i32;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed == "{" {
+            depth += 1;
+            if in_apps && !in_target_app && apps_depth < 0 {
+                apps_depth = depth;
+            }
+            if in_target_app && app_depth < 0 {
+                app_depth = depth;
+            }
+            continue;
+        }
+
+        if trimmed == "}" {
+            depth -= 1;
+            if in_target_app && depth < app_depth {
+                in_target_app = false;
+                app_depth = -1;
+            }
+            if in_apps && !in_target_app && depth < apps_depth {
+                in_apps = false;
+                apps_depth = -1;
+            }
+            continue;
+        }
+
+        if !in_apps && trimmed == "\"apps\"" {
+            in_apps = true;
+            continue;
+        }
+
+        if in_apps && !in_target_app && trimmed == app_id_key {
+            in_target_app = true;
+            continue;
+        }
+
+        if in_target_app && trimmed.starts_with("\"LaunchOptions\"") {
+            let rest = &trimmed["\"LaunchOptions\"".len()..];
+            if let Some(val) = extract_quoted(rest) {
+                return if val.is_empty() { None } else { Some(val.to_string()) };
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,5 +354,104 @@ mod tests {
         fs::write(tmp.path().join("appmanifest_999.acf"), content).unwrap();
         let games = scan_library(tmp.path()).unwrap();
         assert!(games.is_empty());
+    }
+
+    #[test]
+    fn extract_launch_options_finds_value() {
+        let vdf = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "12345"
+                    {
+                        "LaunchOptions"		"-novid %command%"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(
+            extract_launch_options_from_vdf(vdf, 12345),
+            Some("-novid %command%".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_launch_options_returns_none_for_missing_app() {
+        let vdf = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "99999"
+                    {
+                        "LaunchOptions"		"-novid %command%"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(extract_launch_options_from_vdf(vdf, 12345), None);
+    }
+
+    #[test]
+    fn extract_launch_options_returns_none_for_empty_value() {
+        let vdf = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "12345"
+                    {
+                        "LaunchOptions"		""
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(extract_launch_options_from_vdf(vdf, 12345), None);
+    }
+
+    #[test]
+    fn extract_launch_options_returns_none_for_absent_key() {
+        let vdf = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "12345"
+                    {
+                        "LastPlayed"		"1234567890"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(extract_launch_options_from_vdf(vdf, 12345), None);
     }
 }
