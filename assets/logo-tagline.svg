@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 28" width="500" height="28">
+  <style>
+    text {
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px;
+      fill: #c6d4df;
+      text-anchor: middle;
+    }
+  </style>
+  <text x="50%" y="18" xml:space="preserve">Roll back. Play the old way.</text>
+</svg>
