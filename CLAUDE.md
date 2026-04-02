@@ -32,13 +32,20 @@ Note: 2 immutability tests (`lock_and_unlock_file`, `is_locked_reflects_state`) 
 
 Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `style:`
 
+## Branching Strategy
+
+- **`next`** — integration branch for all new development; features and fixes land here first
+- **`main`** — stable release branch; only receives merges from `next` when cutting a release
+
+All feature branches are based off `next` and merged back into `next`. Never merge directly to `main` during development.
+
 ## Implementation Workflow
 
-When implementing features or fixes, always use subagent-driven development within a git worktree for isolation.
+When implementing features or fixes, always use subagent-driven development within a git worktree for isolation. Base worktrees off `next`.
 
 ## Before Finishing a Branch
 
-Before merging or creating a PR, always:
+Before merging or creating a PR (targeting `next`), always:
 
 1. **Bump versions** in `rewind-core/Cargo.toml` and `rewind-cli/Cargo.toml` if any features or fixes were added
 2. **Update CLAUDE.md** if architecture, conventions, or build instructions changed
@@ -46,7 +53,10 @@ Before merging or creating a PR, always:
 
 ## Creating Releases
 
-Use annotated tags with release notes:
+When `next` is ready to release:
+
+1. Merge `next` → `main`
+2. Tag `main` with an annotated tag:
 
 ```sh
 git tag -a v0.2.0 -m "Release notes here..."
