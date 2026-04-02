@@ -16,6 +16,7 @@ steamlocate = "2"
 serde_json = "1"
 image = "0.25"
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
+sevenz-rust = "0.6"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
