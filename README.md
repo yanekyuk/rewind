@@ -1,6 +1,6 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="rewind logo" width="120" />
-  <h1 align="center">rewind</h1>
+  <img src="assets/logo.svg" alt="rewind logo" width="120" /><br/>
+  <img src="assets/logo-text.svg" alt="rewind" />
 </p>
 
 > Roll back. Play the old way.
