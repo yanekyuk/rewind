@@ -61,7 +61,7 @@ When `next` is ready to release:
 1. Cut a `release/X.Y.Z` branch from `next`
 2. Bump versions in `rewind-core/Cargo.toml` and `rewind-cli/Cargo.toml`
 3. Write the changelog entry in `CHANGELOG.md`
-4. Merge `release/X.Y.Z` → `main`
+4. Open a PR from `release/X.Y.Z` targeting **both** `main` and `next` — merge into `main` first, then into `next`
 5. Tag `main` with an annotated tag (the tag triggers binary builds in CI):
 
 ```sh
@@ -75,8 +75,6 @@ EOF
 git push origin vX.Y.Z
 ```
 
-6. Merge `main` back into `next` to keep branches in sync
-
 ## Creating Hotfixes
 
 For urgent fixes on the current release:
@@ -84,6 +82,5 @@ For urgent fixes on the current release:
 1. Cut a `hotfix/X.Y.Z` branch from `main`
 2. Apply the fix and bump the patch version in both `Cargo.toml` files
 3. Write the changelog entry in `CHANGELOG.md`
-4. Merge `hotfix/X.Y.Z` → `main`
+4. Open a PR from `hotfix/X.Y.Z` targeting **both** `main` and `next` — merge into `main` first, then into `next`
 5. Tag `main` with an annotated tag (same format as releases above)
-6. Merge `main` back into `next`
