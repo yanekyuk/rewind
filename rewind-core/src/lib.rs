@@ -3,7 +3,6 @@ pub mod config;
 pub mod depot;
 pub mod image_cache;
 pub mod immutability;
-pub mod localconfig;
 pub mod patcher;
 pub mod reshade;
 pub mod scanner;

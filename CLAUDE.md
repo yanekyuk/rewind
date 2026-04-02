@@ -6,8 +6,8 @@ Steam game version downgrade manager with a ratatui TUI.
 
 Rust workspace with two crates:
 
-- **rewind-core** — Business logic library: DepotDownloader management, file caching/symlinking, ACF patching, immutability locking, Steam library scanning
-- **rewind-cli** — TUI binary using ratatui + crossterm. Screens: Main, DowngradeWizard, VersionPicker, SwitchOverlay, Settings, FirstRun
+- **rewind-core** — Business logic library: DepotDownloader management, file caching/symlinking, ACF patching, immutability locking, Steam library scanning, ReShade download/symlink management
+- **rewind-cli** — TUI binary using ratatui + crossterm. Screens: Main, DowngradeWizard, VersionPicker, SwitchOverlay, Settings, FirstRun, ReshadeSetup
 
 ## Build & Test
 
@@ -27,21 +27,6 @@ Note: 2 immutability tests (`lock_and_unlock_file`, `is_locked_reflects_state`) 
 - DepotDownloader is spawned with `setsid` on Unix to prevent .NET Console from writing to the TUI's terminal
 - The `-remember-password` flag is always passed to DepotDownloader
 - Async work runs in `tokio::spawn` tasks communicating via `mpsc` channels to keep the TUI event loop responsive
-
-## Steam User Data
-
-Per-user game config is stored in:
-
-```
-<steam_root>/userdata/<steamid>/config/localconfig.vdf
-```
-
-The Steam root is resolved via the `steamlocate` crate (`SteamDir::locate()`), making it cross-platform. The `userdata/` directory is always a direct child of the Steam root.
-
-Key data in `localconfig.vdf`:
-- `LaunchOptions` — user-set launch flags/env vars, under `Software > Valve > Steam > apps > <appid>`
-
-When multiple Steam accounts exist (multiple `<steamid>` dirs), Rewind currently uses the most recently modified `localconfig.vdf`. Full multi-account support is tracked in [#28](https://github.com/yanekyuk/rewind/issues/28).
 
 ## Commit Style
 
