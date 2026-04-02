@@ -55,9 +55,8 @@ pub fn write_launch_options(
     options: &str,
 ) -> Result<(), LocalConfigError> {
     let content = std::fs::read_to_string(path)?;
-    let updated = set_launch_options(&content, app_id, options);
-    if updated == content && !options.is_empty() {
-        // set_launch_options made no change — app_id not present in file
+    let (updated, found) = set_launch_options(&content, app_id, options);
+    if !found && !options.is_empty() {
         return Err(LocalConfigError::AppNotFound(app_id));
     }
     std::fs::write(path, updated)?;
@@ -105,11 +104,13 @@ pub(crate) fn extract_launch_options(content: &str, app_id: u32) -> Option<Strin
 }
 
 /// Replace or insert `LaunchOptions` for `app_id` in the VDF content string.
-pub(crate) fn set_launch_options(content: &str, app_id: u32, options: &str) -> String {
+/// Returns `(updated_content, found)` where `found` is true if the app block was located.
+pub(crate) fn set_launch_options(content: &str, app_id: u32, options: &str) -> (String, bool) {
     let app_key = format!("\"{}\"", app_id);
     let lines: Vec<&str> = content.lines().collect();
     let mut result: Vec<String> = Vec::with_capacity(lines.len() + 2);
     let mut i = 0;
+    let mut found = false;
 
     while i < lines.len() {
         if lines[i].trim() == app_key {
@@ -121,6 +122,7 @@ pub(crate) fn set_launch_options(content: &str, app_id: u32, options: &str) -> S
                 i += 1;
             }
             if i < lines.len() && lines[i].trim() == "{" {
+                found = true;
                 result.push(lines[i].to_string());
                 i += 1;
 
@@ -183,7 +185,7 @@ pub(crate) fn set_launch_options(content: &str, app_id: u32, options: &str) -> S
         }
     }
 
-    result.join("\n")
+    (result.join("\n"), found)
 }
 
 /// Parse a VDF key-value line of the form `"Key"\t\t"Value"`.
