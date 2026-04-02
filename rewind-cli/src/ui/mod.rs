@@ -42,5 +42,8 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             version_picker::draw(f, app);
         }
         Screen::Settings => settings::draw(f, app),
+        Screen::SwitchOverlay => {
+            main_screen::draw(f, app);
+        }
     }
 }

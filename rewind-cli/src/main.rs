@@ -298,6 +298,7 @@ async fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
         Screen::DowngradeWizard => handle_wizard(app, key),
         Screen::VersionPicker => handle_version_picker(app, key),
         Screen::Settings => handle_settings(app, key),
+        Screen::SwitchOverlay => {}
     }
 }
 

@@ -24,6 +24,10 @@ pub enum StepKind {
     LinkFiles,
     PatchManifest,
     LockManifest,
+    // Switch overlay steps
+    RepointSymlinks,
+    PatchAcf,
+    LockAcf,
 }
 
 impl StepKind {
@@ -36,6 +40,9 @@ impl StepKind {
             StepKind::LinkFiles => "Linking manifest files to game directory",
             StepKind::PatchManifest => "Patching Steam manifest",
             StepKind::LockManifest => "Locking manifest file",
+            StepKind::RepointSymlinks => "Repointing symlinks",
+            StepKind::PatchAcf => "Patching ACF",
+            StepKind::LockAcf => "Locking ACF",
         }
     }
 }
@@ -46,6 +53,7 @@ pub enum Screen {
     Main,
     DowngradeWizard,
     VersionPicker,
+    SwitchOverlay,
     Settings,
 }
 
@@ -53,6 +61,8 @@ pub enum Screen {
 pub struct DowngradeWizardState {
     pub manifest_input: String,
     pub steamdb_url: String,
+    pub app_id: u32,
+    pub depot_id: u32,
     pub is_downloading: bool,
     pub error: Option<String>,
     /// When set, pressing [O] opens this URL instead of the SteamDB manifests page.
@@ -77,6 +87,16 @@ pub struct SettingsState {
 #[derive(Debug, Default)]
 pub struct VersionPickerState {
     pub selected_index: usize,
+}
+
+#[derive(Debug, Default)]
+pub struct SwitchOverlayState {
+    /// High-level process steps with their status.
+    pub steps: Vec<(StepKind, StepStatus)>,
+    /// The manifest ID being switched to.
+    pub target_manifest: String,
+    /// Whether the switch is complete (user can dismiss with Esc).
+    pub done: bool,
 }
 
 #[derive(Default)]
@@ -109,6 +129,7 @@ pub struct App {
     pub wizard_state: DowngradeWizardState,
     pub settings_state: SettingsState,
     pub version_picker_state: VersionPickerState,
+    pub switch_overlay_state: SwitchOverlayState,
     pub progress_rx: Option<mpsc::Receiver<DepotProgress>>,
     /// Active download parameters (set when download starts, consumed on completion).
     pub pending_download: Option<PendingDownload>,
@@ -137,6 +158,7 @@ impl App {
             wizard_state: DowngradeWizardState::default(),
             settings_state: SettingsState::default(),
             version_picker_state: VersionPickerState::default(),
+            switch_overlay_state: SwitchOverlayState::default(),
             progress_rx: None,
             pending_download: None,
             depot_stdin: None,
@@ -151,6 +173,12 @@ impl App {
 
     pub fn set_step_status(&mut self, kind: &StepKind, status: StepStatus) {
         if let Some(step) = self.wizard_state.steps.iter_mut().find(|s| s.0 == *kind) {
+            step.1 = status;
+        }
+    }
+
+    pub fn set_switch_step_status(&mut self, kind: &StepKind, status: StepStatus) {
+        if let Some(step) = self.switch_overlay_state.steps.iter_mut().find(|s| s.0 == *kind) {
             step.1 = status;
         }
     }
