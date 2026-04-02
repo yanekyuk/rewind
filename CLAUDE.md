@@ -28,6 +28,21 @@ Note: 2 immutability tests (`lock_and_unlock_file`, `is_locked_reflects_state`) 
 - The `-remember-password` flag is always passed to DepotDownloader
 - Async work runs in `tokio::spawn` tasks communicating via `mpsc` channels to keep the TUI event loop responsive
 
+## Steam User Data
+
+Per-user game config is stored in:
+
+```
+<steam_root>/userdata/<steamid>/config/localconfig.vdf
+```
+
+The Steam root is resolved via the `steamlocate` crate (`SteamDir::locate()`), making it cross-platform. The `userdata/` directory is always a direct child of the Steam root.
+
+Key data in `localconfig.vdf`:
+- `LaunchOptions` — user-set launch flags/env vars, under `Software > Valve > Steam > apps > <appid>`
+
+When multiple Steam accounts exist (multiple `<steamid>` dirs), Rewind currently uses the most recently modified `localconfig.vdf`. Full multi-account support is tracked in [#28](https://github.com/yanekyuk/rewind/issues/28).
+
 ## Commit Style
 
 Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `style:`
