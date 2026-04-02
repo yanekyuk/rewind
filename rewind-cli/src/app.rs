@@ -74,6 +74,8 @@ pub struct DowngradeWizardState {
     pub prompt_input: Option<String>,
     /// The prompt label from DepotDownloader (e.g. "Password:").
     pub prompt_label: Option<String>,
+    /// Set when Steam is detected running on wizard open.
+    pub steam_warning: bool,
 }
 
 #[derive(Debug, Default)]
@@ -86,6 +88,10 @@ pub struct SettingsState {
 #[derive(Debug, Default)]
 pub struct VersionPickerState {
     pub selected_index: usize,
+    /// Set when Steam is detected running on screen open.
+    pub steam_warning: bool,
+    /// Set when an operation is blocked (e.g. Steam still running).
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Default)]
