@@ -7,7 +7,7 @@ Steam game version downgrade manager with a ratatui TUI.
 Rust workspace with two crates:
 
 - **rewind-core** — Business logic library: DepotDownloader management, file caching/symlinking, ACF patching, immutability locking, Steam library scanning
-- **rewind-cli** — TUI binary using ratatui + crossterm. Screens: Main, DowngradeWizard, VersionPicker, Settings, FirstRun
+- **rewind-cli** — TUI binary using ratatui + crossterm. Screens: Main, DowngradeWizard, VersionPicker, SwitchOverlay, Settings, FirstRun
 
 ## Build & Test
 
