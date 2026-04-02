@@ -146,6 +146,9 @@ pub struct App {
     pub depot_kill: Option<mpsc::Sender<()>>,
     pub image_state: ImageState,
     pub image_picker: Option<ratatui_image::picker::Picker>,
+    /// Launch options per appid, loaded lazily. Missing key = not yet attempted.
+    /// Some(None) = loaded, no options set. Some(Some(s)) = options string s.
+    pub launch_options_cache: HashMap<u32, Option<String>>,
     /// Receiver to get the stdin handle back after writing credentials.
     pub pending_stdin_return: Option<mpsc::Receiver<tokio::process::ChildStdin>>,
     /// Tracks when the last DepotDownloader output was received (for timeout detection).
@@ -172,6 +175,7 @@ impl App {
             depot_kill: None,
             image_state: ImageState::default(),
             image_picker: None,
+            launch_options_cache: HashMap::new(),
             pending_stdin_return: None,
             last_depot_output: None,
             should_quit: false,
