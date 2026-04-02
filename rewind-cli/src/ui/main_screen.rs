@@ -1,6 +1,5 @@
 use crate::app::App;
 use crate::ui::theme;
-use rewind_core::steamdb;
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout},
