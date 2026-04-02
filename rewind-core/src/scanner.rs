@@ -198,6 +198,28 @@ fn extract_first_depot(content: &str) -> Option<(u32, String)> {
     None
 }
 
+/// Like `extract_quoted` but handles VDF escape sequences (`\"` → `"`, `\\` → `\`).
+/// Returns an owned String since the value may be transformed.
+fn extract_quoted_escaped(s: &str) -> Option<String> {
+    let s = s.trim();
+    if !s.starts_with('"') {
+        return None;
+    }
+    let mut result = String::new();
+    let mut chars = s[1..].chars();
+    loop {
+        match chars.next()? {
+            '"' => return Some(result),
+            '\\' => match chars.next()? {
+                '"' => result.push('"'),
+                '\\' => result.push('\\'),
+                c => { result.push('\\'); result.push(c); }
+            },
+            c => result.push(c),
+        }
+    }
+}
+
 fn extract_quoted(s: &str) -> Option<&str> {
     let s = s.trim();
     if s.starts_with('"') {
@@ -297,8 +319,8 @@ fn extract_launch_options_from_vdf(content: &str, app_id: u32) -> Option<String>
 
         if in_target_app && trimmed.starts_with("\"LaunchOptions\"") {
             let rest = &trimmed["\"LaunchOptions\"".len()..];
-            if let Some(val) = extract_quoted(rest) {
-                return if val.is_empty() { None } else { Some(val.to_string()) };
+            if let Some(val) = extract_quoted_escaped(rest) {
+                return if val.is_empty() { None } else { Some(val) };
             }
         }
     }

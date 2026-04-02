@@ -203,19 +203,19 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Render hero image in the top portion if available, with text below.
+    // Render text at top; hero image below if available.
     if let Some(protocol) = app.image_state.protocols.get_mut(&game_app_id) {
         let split = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
             .split(inner);
+
+        let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
+        f.render_widget(para, split[0]);
 
         // Image fills its area with no additional margin
         let widget = StatefulImage::default();
-        f.render_stateful_widget(widget, split[0], protocol);
-
-        let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
-        f.render_widget(para, split[1]);
+        f.render_stateful_widget(widget, split[1], protocol);
     } else {
         let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
         f.render_widget(para, inner);
