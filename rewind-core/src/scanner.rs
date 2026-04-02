@@ -246,13 +246,12 @@ fn extract_launch_options_from_vdf(content: &str, app_id: u32) -> Option<String>
                 app_depth = -1;
             }
             if in_apps && !in_target_app && depth < apps_depth {
-                in_apps = false;
-                apps_depth = -1;
+                return None;
             }
             continue;
         }
 
-        if !in_apps && trimmed == "\"apps\"" {
+        if !in_apps && trimmed == "\"apps\"" && depth == 4 {
             in_apps = true;
             continue;
         }
@@ -453,5 +452,40 @@ mod tests {
     }
 }"#;
         assert_eq!(extract_launch_options_from_vdf(vdf, 12345), None);
+    }
+
+    #[test]
+    fn extract_launch_options_ignores_apps_at_wrong_depth() {
+        // "apps" appearing at depth != 4 must not be matched
+        let vdf = r#""UserLocalConfigStore"
+{
+    "apps"
+    {
+        "12345"
+        {
+            "LaunchOptions"		"wrong"
+        }
+    }
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "12345"
+                    {
+                        "LaunchOptions"		"correct"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(
+            extract_launch_options_from_vdf(vdf, 12345),
+            Some("correct".to_string())
+        );
     }
 }
