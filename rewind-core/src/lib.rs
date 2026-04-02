@@ -5,4 +5,5 @@ pub mod image_cache;
 pub mod immutability;
 pub mod patcher;
 pub mod scanner;
+pub mod steam_guard;
 pub mod steamdb;

@@ -20,10 +20,29 @@ pub fn draw(f: &mut Frame, app: &App) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
+    let has_info = app.version_picker_state.steam_warning
+        || app.version_picker_state.error.is_some();
+    let info_height: u16 = if has_info { 1 } else { 0 };
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Min(0), Constraint::Length(1)])
+        .constraints([
+            Constraint::Length(info_height), // warning / error line
+            Constraint::Min(0),              // version list
+            Constraint::Length(1),           // help bar
+        ])
         .split(inner.inner(Margin { horizontal: 1, vertical: 0 }));
+
+    // Warning / error line
+    if app.version_picker_state.steam_warning {
+        let warn = Paragraph::new(" \u{26a0} Steam is running. Quit Steam before switching.")
+            .style(theme::status_warning());
+        f.render_widget(warn, layout[0]);
+    } else if let Some(err) = &app.version_picker_state.error {
+        let err_para = Paragraph::new(format!(" {}", err))
+            .style(theme::status_error());
+        f.render_widget(err_para, layout[0]);
+    }
 
     let cached = app
         .selected_game_entry()
@@ -34,7 +53,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         let msg = Paragraph::new("No cached versions found.\nUse [D] to downgrade first.")
             .alignment(Alignment::Center)
             .style(theme::text_secondary());
-        f.render_widget(msg, layout[0]);
+        f.render_widget(msg, layout[1]);
     } else {
         let active = app
             .selected_game_entry()
@@ -72,10 +91,10 @@ pub fn draw(f: &mut Frame, app: &App) {
             .collect();
 
         let list = List::new(items);
-        f.render_widget(list, layout[0]);
+        f.render_widget(list, layout[1]);
     }
 
     let help = Paragraph::new(" [↑↓] select   [Enter] switch   [Esc] cancel ")
         .style(theme::help_bar());
-    f.render_widget(help, layout[1]);
+    f.render_widget(help, layout[2]);
 }
