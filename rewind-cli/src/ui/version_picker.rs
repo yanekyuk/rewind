@@ -42,15 +42,22 @@ pub fn draw(f: &mut Frame, app: &App) {
             .map(|e| e.active_manifest_id.as_str())
             .unwrap_or("");
 
+        let latest = app
+            .selected_game_entry()
+            .map(|e| e.latest_manifest_id.as_str())
+            .unwrap_or("");
+
         let items: Vec<ListItem> = cached
             .iter()
             .enumerate()
             .map(|(i, manifest_id)| {
                 let is_active = manifest_id == active;
-                let label = if is_active {
-                    format!("● {} (current)", manifest_id)
-                } else {
-                    format!("  {}", manifest_id)
+                let is_latest = manifest_id == latest;
+                let label = match (is_active, is_latest) {
+                    (true, true) => format!("● {} (installed) (latest)", manifest_id),
+                    (true, false) => format!("● {} (installed)", manifest_id),
+                    (false, true) => format!("  {} (latest)", manifest_id),
+                    (false, false) => format!("  {}", manifest_id),
                 };
 
                 let style = if i == app.version_picker_state.selected_index {
