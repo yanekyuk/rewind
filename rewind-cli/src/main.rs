@@ -54,6 +54,33 @@ async fn run(
     let (image_tx, mut image_rx) = mpsc::channel::<(u32, Option<image::DynamicImage>)>(16);
 
     loop {
+        // Poll ReShade setup progress channel.
+        let reshade_msgs: Vec<rewind_core::reshade::ReshadeProgress> = {
+            if let Some(rx) = &mut app.reshade_progress_rx {
+                let mut msgs = Vec::new();
+                while let Ok(msg) = rx.try_recv() {
+                    msgs.push(msg);
+                }
+                msgs
+            } else {
+                Vec::new()
+            }
+        };
+        for msg in reshade_msgs {
+            match msg {
+                rewind_core::reshade::ReshadeProgress::Line(line) => {
+                    app.reshade_state.lines.push(line);
+                }
+                rewind_core::reshade::ReshadeProgress::Done => {
+                    finalize_reshade(&mut app);
+                }
+                rewind_core::reshade::ReshadeProgress::Error(e) => {
+                    app.reshade_state.error = Some(e);
+                    app.reshade_state.done = false;
+                }
+            }
+        }
+
         terminal.draw(|f| ui::draw(f, &mut app))?;
 
         // Poll progress channel.
@@ -299,6 +326,7 @@ async fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
         Screen::VersionPicker => handle_version_picker(app, key),
         Screen::Settings => handle_settings(app, key),
         Screen::SwitchOverlay => handle_switch_overlay(app, key),
+        Screen::ReshadeSetup => handle_reshade_setup(app, key),
     }
 }
 
@@ -353,6 +381,69 @@ fn handle_main(app: &mut App, key: KeyCode) {
             if let Some(game) = app.selected_game() {
                 let url = rewind_core::steamdb::app_url(game.app_id);
                 let _ = open::that(url);
+            }
+        }
+        KeyCode::Char('r') => {
+            let Some(game) = app.selected_game().cloned() else { return };
+            let game_id = game.app_id;
+            let entry = app.games_config.games.iter().find(|e| e.app_id == game_id);
+
+            match entry.and_then(|e| e.reshade.as_ref()) {
+                None => {
+                    // Any installed game can use ReShade — open setup wizard
+                    app.reshade_state = app::ReshadeSetupState::default();
+                    app.screen = Screen::ReshadeSetup;
+                }
+                Some(r) if r.enabled => {
+                    // Disable: remove symlinks
+                    let api = r.api.clone();
+                    match rewind_core::reshade::disable_reshade(&game.install_path, &api) {
+                        Ok(()) => {
+                            if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game_id) {
+                                if let Some(ref mut reshade) = entry.reshade {
+                                    reshade.enabled = false;
+                                }
+                            }
+                            app.reshade_state.inline_error = None;
+                            let _ = config::save_games(&app.games_config);
+                        }
+                        Err(e) => {
+                            app.reshade_state.inline_error = Some(e.to_string());
+                        }
+                    }
+                }
+                Some(r) => {
+                    // Enable: re-create symlinks
+                    let api = r.api.clone();
+                    let shaders_enabled = r.shaders_enabled;
+                    let Ok(bin_dir) = config::bin_dir() else { return };
+                    let Ok(cache_dir) = config::cache_dir() else { return };
+                    let reshade_dll = rewind_core::reshade::reshade_dll_path(&bin_dir);
+                    let shaders_src = if shaders_enabled {
+                        Some(rewind_core::reshade::reshade_shaders_cache_path(&cache_dir))
+                    } else {
+                        None
+                    };
+                    match rewind_core::reshade::enable_reshade(
+                        &game.install_path,
+                        &api,
+                        &reshade_dll,
+                        shaders_src.as_deref(),
+                    ) {
+                        Ok(()) => {
+                            if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game_id) {
+                                if let Some(ref mut reshade) = entry.reshade {
+                                    reshade.enabled = true;
+                                }
+                            }
+                            app.reshade_state.inline_error = None;
+                            let _ = config::save_games(&app.games_config);
+                        }
+                        Err(e) => {
+                            app.reshade_state.inline_error = Some(e.to_string());
+                        }
+                    }
+                }
             }
         }
         _ => {}
@@ -544,6 +635,89 @@ fn handle_switch_overlay(app: &mut App, key: KeyCode) {
         app.switch_overlay_state = app::SwitchOverlayState::default();
         app.screen = Screen::Main;
     }
+}
+
+fn handle_reshade_setup(app: &mut App, key: KeyCode) {
+    use app::ReshadeSetupStep;
+
+    match app.reshade_state.step {
+        ReshadeSetupStep::PickApi => match key {
+            KeyCode::Esc => {
+                app.screen = Screen::Main;
+                app.reshade_state = app::ReshadeSetupState::default();
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                if app.reshade_state.selected_api > 0 {
+                    app.reshade_state.selected_api -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if app.reshade_state.selected_api < 3 {
+                    app.reshade_state.selected_api += 1;
+                }
+            }
+            KeyCode::Enter => {
+                app.reshade_state.step = ReshadeSetupStep::ConfirmShaders;
+            }
+            _ => {}
+        },
+        ReshadeSetupStep::ConfirmShaders => match key {
+            KeyCode::Esc => {
+                app.reshade_state.step = ReshadeSetupStep::PickApi;
+            }
+            KeyCode::Char('y') | KeyCode::Char('Y') => {
+                app.reshade_state.download_shaders = true;
+                start_reshade_download(app);
+            }
+            KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Enter => {
+                app.reshade_state.download_shaders = false;
+                start_reshade_download(app);
+            }
+            _ => {}
+        },
+        ReshadeSetupStep::Downloading => {
+            if key == KeyCode::Esc
+                && (app.reshade_state.done || app.reshade_state.error.is_some())
+            {
+                app.screen = Screen::Main;
+                app.reshade_state = app::ReshadeSetupState::default();
+                app.reshade_progress_rx = None;
+            }
+        }
+    }
+}
+
+fn start_reshade_download(app: &mut App) {
+    let Ok(bin_dir) = config::bin_dir() else { return };
+    let Ok(cache_dir) = config::cache_dir() else { return };
+    let download_shaders = app.reshade_state.download_shaders;
+
+    let (tx, rx) = mpsc::channel(64);
+    app.reshade_progress_rx = Some(rx);
+    app.reshade_state.step = app::ReshadeSetupStep::Downloading;
+    app.reshade_state.lines.clear();
+    app.reshade_state.done = false;
+    app.reshade_state.error = None;
+
+    tokio::spawn(async move {
+        match rewind_core::reshade::download_reshade(&bin_dir, tx.clone()).await {
+            Ok(_) => {}
+            Err(e) => {
+                let _ = tx.send(rewind_core::reshade::ReshadeProgress::Error(e.to_string())).await;
+                return;
+            }
+        }
+
+        if download_shaders {
+            let shaders_dir = rewind_core::reshade::reshade_shaders_cache_path(&cache_dir);
+            if let Err(e) = rewind_core::reshade::download_shaders(&shaders_dir, tx.clone()).await {
+                let _ = tx.send(rewind_core::reshade::ReshadeProgress::Error(e.to_string())).await;
+                return;
+            }
+        }
+
+        let _ = tx.send(rewind_core::reshade::ReshadeProgress::Done).await;
+    });
 }
 
 fn handle_settings(app: &mut App, key: KeyCode) {
@@ -803,6 +977,82 @@ fn step_kind_from_str(s: &str) -> Option<app::StepKind> {
     }
 }
 
+fn finalize_reshade(app: &mut App) {
+    use rewind_core::config::{ReshadeApi, ReshadeEntry};
+
+    const APIS: &[ReshadeApi] = &[
+        ReshadeApi::Dxgi,
+        ReshadeApi::D3d9,
+        ReshadeApi::OpenGl32,
+        ReshadeApi::Vulkan1,
+    ];
+
+    let api = match APIS.get(app.reshade_state.selected_api) {
+        Some(a) => a.clone(),
+        None => {
+            app.reshade_state.error = Some("Invalid API selection.".into());
+            return;
+        }
+    };
+
+    let Ok(bin_dir) = config::bin_dir() else { return };
+    let Ok(cache_dir) = config::cache_dir() else { return };
+
+    let reshade_dll = rewind_core::reshade::reshade_dll_path(&bin_dir);
+    let shaders_enabled = app.reshade_state.download_shaders;
+    let shaders_src = if shaders_enabled {
+        Some(rewind_core::reshade::reshade_shaders_cache_path(&cache_dir))
+    } else {
+        None
+    };
+
+    let Some(game) = app.selected_game().cloned() else { return };
+
+    if let Err(e) = rewind_core::reshade::enable_reshade(
+        &game.install_path,
+        &api,
+        &reshade_dll,
+        shaders_src.as_deref(),
+    ) {
+        app.reshade_state.error = Some(format!("Failed to enable ReShade: {}", e));
+        return;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let launch_cmd = api.linux_launch_command();
+        app.reshade_state.lines.push(format!("Paste into Steam launch options:\n{}", launch_cmd));
+    }
+
+    let entry = ReshadeEntry {
+        api,
+        enabled: true,
+        shaders_enabled,
+    };
+
+    if let Some(game_entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game.app_id) {
+        game_entry.reshade = Some(entry);
+    } else {
+        // Game isn't tracked by rewind yet — create a minimal entry to hold ReShade config.
+        app.games_config.games.push(rewind_core::config::GameEntry {
+            name: game.name.clone(),
+            app_id: game.app_id,
+            depot_id: game.depot_id,
+            install_path: game.install_path.clone(),
+            active_manifest_id: game.manifest_id.clone(),
+            latest_manifest_id: game.manifest_id.clone(),
+            latest_buildid: String::new(),
+            cached_manifest_ids: vec![],
+            acf_locked: false,
+            reshade: Some(entry),
+        });
+    }
+
+    let _ = config::save_games(&app.games_config);
+    app.reshade_state.done = true;
+    app.reshade_state.lines.push("ReShade enabled!".into());
+}
+
 fn finalize_downgrade_with_steps(app: &mut App, dl: PendingDownload) {
     use crate::app::{StepKind, StepStatus};
 
@@ -865,6 +1115,7 @@ fn finalize_downgrade_with_steps(app: &mut App, dl: PendingDownload) {
             latest_buildid: latest_buildid.clone(),
             cached_manifest_ids: vec![dl.current_manifest_id.clone(), dl.manifest_id.clone()],
             acf_locked: true,
+            reshade: None,
         });
     }
 

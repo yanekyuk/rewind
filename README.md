@@ -33,6 +33,7 @@
 - **Delta caching** — only stores files that differ between manifests, not entire game copies
 - **ACF patching & locking** — patches `appmanifest_*.acf` and locks it to prevent Steam auto-updates
 - **Launch options display** — shows configured Steam launch options in the game detail panel
+- **ReShade integration** — download ReShade automatically and enable it per-game via symlinks; on Linux, the required `WINEDLLOVERRIDES` launch command is shown for copy-pasting into Steam
 - **Auto DepotDownloader setup** — downloads and manages the DepotDownloader binary for you
 - **Persistent config** — Steam credentials and library paths stored once, never asked again
 - **Steam process detection** — warns before operations when Steam is running to avoid conflicts
@@ -159,7 +160,9 @@ sudo mv rewind /usr/local/bin/rewind
 
 **Windows** — Run `rewind` as Administrator. Symlink creation requires elevated privileges.
 
-**Linux** — Most features work without any special permissions. The one exception is **ACF locking**: `rewind` locks the game's manifest file to stop Steam from auto-updating over your downgraded version. This uses `chattr +i` under the hood, which requires a specific Linux privilege.
+**Linux** — ReShade download requires `libarchive` (used to extract the NSIS installer). It is pre-installed on most distributions; if missing: `sudo pacman -S libarchive` / `sudo apt-get install libarchive13` / `sudo dnf install libarchive`.
+
+Most features work without any special permissions. The one exception is **ACF locking**: `rewind` locks the game's manifest file to stop Steam from auto-updating over your downgraded version. This uses `chattr +i` under the hood, which requires a specific Linux privilege.
 
 You do **not** need to run `sudo rewind`. Instead, grant only the required privilege to the binary once:
 
@@ -181,6 +184,7 @@ If you skip this step, `rewind` will still work but falls back to read-only file
 | `↓` / `j`   | Move down in game list          |
 | `D`         | Download new version            |
 | `U`         | Switch between cached versions  |
+| `R`         | ReShade setup / toggle          |
 | `O`         | Open SteamDB page               |
 | `S`         | Settings                        |
 | `Q` / `Esc` | Quit                            |
