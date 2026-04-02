@@ -50,7 +50,9 @@ Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `style:`
 ## Branching Strategy
 
 - **`next`** — integration branch for all new development; features and fixes land here first
-- **`main`** — stable release branch; only receives merges from `next` when cutting a release
+- **`main`** — stable release branch; only receives merges via `release/*` or `hotfix/*` branches
+- **`release/X.Y.Z`** — release preparation branch cut from `next`; merged into `main` then back into `next`
+- **`hotfix/X.Y.Z`** — emergency fix branch cut from `main`; merged into `main` then back into `next`
 
 All feature branches are based off `next` and merged back into `next`. Never merge directly to `main` during development.
 
@@ -62,18 +64,41 @@ When implementing features or fixes, always use subagent-driven development with
 
 Before merging or creating a PR (targeting `next`), always:
 
-1. **Bump versions** in `rewind-core/Cargo.toml` and `rewind-cli/Cargo.toml` if any features or fixes were added
-2. **Update CLAUDE.md** if architecture, conventions, or build instructions changed
-3. **Update README.md** if user-facing behavior, keybindings, or setup instructions changed
+1. **Update CLAUDE.md** if architecture, conventions, or build instructions changed
+2. **Update README.md** if user-facing behavior, keybindings, or setup instructions changed
+
+Version bumps and changelog entries happen on the `release/*` or `hotfix/*` branch, not on feature branches.
 
 ## Creating Releases
 
 When `next` is ready to release:
 
-1. Merge `next` → `main`
-2. Tag `main` with an annotated tag:
+1. Cut a `release/X.Y.Z` branch from `next`
+2. Bump versions in `rewind-core/Cargo.toml` and `rewind-cli/Cargo.toml`
+3. Write the changelog entry in `CHANGELOG.md`
+4. Merge `release/X.Y.Z` → `main`
+5. Tag `main` with an annotated tag (the tag triggers binary builds in CI):
 
 ```sh
-git tag -a v0.2.0 -m "Release notes here..."
-git push origin v0.2.0
+git tag -a vX.Y.Z -m "$(cat <<'EOF'
+Release vX.Y.Z
+
+## What's Changed
+- ...
+EOF
+)"
+git push origin vX.Y.Z
 ```
+
+6. Merge `main` back into `next` to keep branches in sync
+
+## Creating Hotfixes
+
+For urgent fixes on the current release:
+
+1. Cut a `hotfix/X.Y.Z` branch from `main`
+2. Apply the fix and bump the patch version in both `Cargo.toml` files
+3. Write the changelog entry in `CHANGELOG.md`
+4. Merge `hotfix/X.Y.Z` → `main`
+5. Tag `main` with an annotated tag (same format as releases above)
+6. Merge `main` back into `next`
