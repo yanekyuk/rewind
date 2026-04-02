@@ -2,6 +2,7 @@
 use crate::config::ReshadeApi;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
+use tokio::sync::mpsc;
 
 #[derive(Error, Debug)]
 pub enum ReshadeError {
@@ -115,6 +116,85 @@ pub fn disable_reshade(game_dir: &Path, api: &ReshadeApi) -> Result<(), ReshadeE
     }
 
     Ok(())
+}
+
+/// Download the official ReShade installer from reshade.me, extract `ReShade64.dll`
+/// from the embedded NSIS 7z stream, and write it to `bin_dir`.
+///
+/// Skips the download if `ReShade64.dll` already exists in `bin_dir`.
+/// Progress lines are sent over `tx`; the channel is NOT closed here — the caller
+/// decides when to send `ReshadeProgress::Done`.
+pub async fn download_reshade(
+    bin_dir: &Path,
+    tx: mpsc::Sender<ReshadeProgress>,
+) -> Result<PathBuf, ReshadeError> {
+    let dest = reshade_dll_path(bin_dir);
+    if dest.exists() {
+        return Ok(dest);
+    }
+
+    std::fs::create_dir_all(bin_dir)?;
+
+    let client = reqwest::Client::builder()
+        .user_agent("rewind-cli/0.1")
+        .build()?;
+
+    let _ = tx.send(ReshadeProgress::Line("Fetching ReShade download URL...".into())).await;
+
+    // Scrape reshade.me for the installer URL (pattern: /downloads/ReShade_Setup_X.Y.Z.exe)
+    let page = client.get("https://reshade.me/").send().await?.text().await?;
+    let installer_path = page
+        .split('"')
+        .find(|s| s.starts_with("/downloads/ReShade_Setup_") && s.ends_with(".exe"))
+        .ok_or(ReshadeError::NotFound)?
+        .to_string();
+    let installer_url = format!("https://reshade.me{}", installer_path);
+
+    let _ = tx.send(ReshadeProgress::Line(format!("Downloading {}...", installer_path))).await;
+
+    let bytes = client.get(&installer_url).send().await?.bytes().await?;
+
+    // NSIS installers embed a 7z-compressed payload. Locate it by 7z magic bytes.
+    const SEVEN_Z_MAGIC: &[u8] = b"\x37\x7a\xbc\xaf\x27\x1c";
+    let offset = bytes
+        .windows(SEVEN_Z_MAGIC.len())
+        .position(|w| w == SEVEN_Z_MAGIC)
+        .ok_or(ReshadeError::ExtractionFailed)?;
+
+    let _ = tx.send(ReshadeProgress::Line("Extracting ReShade64.dll...".into())).await;
+
+    // Write the 7z stream to a temp file so sevenz-rust can open it
+    let tmp_7z = std::env::temp_dir().join("rewind_reshade_setup.7z");
+    std::fs::write(&tmp_7z, &bytes[offset..])?;
+
+    let tmp_extract = std::env::temp_dir().join("rewind_reshade_extract");
+    if tmp_extract.exists() {
+        std::fs::remove_dir_all(&tmp_extract)?;
+    }
+    std::fs::create_dir_all(&tmp_extract)?;
+
+    sevenz_rust::decompress_file(&tmp_7z, &tmp_extract)
+        .map_err(|e| ReshadeError::SevenZ(e.to_string()))?;
+    let _ = std::fs::remove_file(&tmp_7z);
+
+    // Find ReShade64.dll in extracted output (may be at root or in a subdir)
+    let dll_src = walkdir::WalkDir::new(&tmp_extract)
+        .into_iter()
+        .filter_map(|e| e.ok())
+        .find(|e| e.file_name() == std::ffi::OsStr::new("ReShade64.dll"))
+        .map(|e| e.path().to_path_buf())
+        .ok_or(ReshadeError::NotFound)?;
+
+    std::fs::copy(&dll_src, &dest)?;
+    let _ = std::fs::remove_dir_all(&tmp_extract);
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&dest, std::fs::Permissions::from_mode(0o755))?;
+    }
+
+    Ok(dest)
 }
 
 #[cfg(test)]
@@ -244,5 +324,21 @@ mod tests {
         let shaders_link = game_dir.join("reshade-shaders");
         assert!(shaders_link.exists());
         assert!(std::fs::symlink_metadata(&shaders_link).unwrap().file_type().is_symlink());
+    }
+
+    #[tokio::test]
+    async fn download_reshade_skips_when_dll_exists() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let bin_dir = tmp.path().to_path_buf();
+        // Pre-create the DLL to simulate an already-downloaded state
+        std::fs::write(bin_dir.join("ReShade64.dll"), b"existing").unwrap();
+
+        let (tx, mut rx) = tokio::sync::mpsc::channel(8);
+        let result = download_reshade(&bin_dir, tx).await.unwrap();
+
+        assert_eq!(result, bin_dir.join("ReShade64.dll"));
+        // No Line messages expected — returns immediately without sending anything
+        assert!(rx.try_recv().is_err()); // channel empty
     }
 }
