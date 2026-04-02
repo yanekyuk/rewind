@@ -35,6 +35,8 @@
 - **Launch options display** — shows configured Steam launch options in the game detail panel
 - **Auto DepotDownloader setup** — downloads and manages the DepotDownloader binary for you
 - **Persistent config** — Steam credentials and library paths stored once, never asked again
+- **Steam process detection** — warns before operations when Steam is running to avoid conflicts
+- **Game artwork** — fetches and displays hero images from Steam CDN in the detail panel
 - **Cross-platform** — Linux, macOS, and Windows
 
 ---
@@ -102,10 +104,10 @@ Go to the [Releases](https://github.com/yanekyuk/rewind/releases) page and downl
 
 | Platform | File |
 |----------|------|
-| Windows (64-bit) | [`rewind-x86_64-windows.zip`](https://github.com/yanekyuk/rewind/releases/download/v0.2.0/rewind-x86_64-windows.zip) |
-| macOS (Apple Silicon) | [`rewind-aarch64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.2.0/rewind-aarch64-macos.tar.gz) |
-| macOS (Intel) | [`rewind-x86_64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.2.0/rewind-x86_64-macos.tar.gz) |
-| Linux (64-bit) | [`rewind-x86_64-linux.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.2.0/rewind-x86_64-linux.tar.gz) |
+| Windows (64-bit) | [`rewind-x86_64-windows.zip`](https://github.com/yanekyuk/rewind/releases/download/v0.4.2/rewind-x86_64-windows.zip) |
+| macOS (Apple Silicon) | [`rewind-aarch64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.2/rewind-aarch64-macos.tar.gz) |
+| macOS (Intel) | [`rewind-x86_64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.2/rewind-x86_64-macos.tar.gz) |
+| Linux (64-bit) | [`rewind-x86_64-linux.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.2/rewind-x86_64-linux.tar.gz) |
 
 `rewind` is a terminal application — it always needs to be launched from a terminal window. It cannot be opened by double-clicking.
 
@@ -173,13 +175,15 @@ If you skip this step, `rewind` will still work but falls back to read-only file
 
 ## Keybindings
 
-| Key | Action                          |
-|-----|---------------------------------|
-| `D` | Download new version            |
-| `U` | Switch between cached versions  |
-| `O` | Open SteamDB page               |
-| `S` | Settings                        |
-| `Q` | Quit                            |
+| Key         | Action                          |
+|-------------|---------------------------------|
+| `↑` / `k`   | Move up in game list            |
+| `↓` / `j`   | Move down in game list          |
+| `D`         | Download new version            |
+| `U`         | Switch between cached versions  |
+| `O`         | Open SteamDB page               |
+| `S`         | Settings                        |
+| `Q` / `Esc` | Quit                            |
 
 ### Download Wizard
 
@@ -188,7 +192,24 @@ If you skip this step, `rewind` will still work but falls back to read-only file
 | `P`     | Open SteamDB patches page       |
 | `M`     | Open SteamDB manifests page     |
 | `Enter` | Download pasted manifest ID     |
+| `R`     | Restart in terminal mode (on error) |
 | `Esc`   | Cancel                          |
+
+### Version Picker
+
+| Key     | Action                          |
+|---------|---------------------------------|
+| `↑` / `↓` | Select version                |
+| `Enter` | Switch to selected version      |
+| `Esc`   | Cancel                          |
+
+### Settings
+
+| Key     | Action                          |
+|---------|---------------------------------|
+| `Tab`   | Switch between fields           |
+| `Enter` | Save / add library path         |
+| `Esc`   | Back to main screen             |
 
 ## Data Directory
 
