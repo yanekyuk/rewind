@@ -68,10 +68,6 @@ pub struct ReshadeEntry {
     pub api: ReshadeApi,
     pub enabled: bool,
     pub shaders_enabled: bool,
-    /// Original Steam launch options saved before rewind wrote WINEDLLOVERRIDES (Linux).
-    /// Restored when ReShade is disabled.
-    #[serde(default)]
-    pub original_launch_options: Option<String>,
 }
 
 impl GameEntry {
@@ -230,7 +226,6 @@ mod tests {
             api: ReshadeApi::Dxgi,
             enabled: true,
             shaders_enabled: false,
-            original_launch_options: Some("mangohud %command%".into()),
         };
         let s = toml::to_string_pretty(&entry).unwrap();
         let parsed: ReshadeEntry = toml::from_str(&s).unwrap();

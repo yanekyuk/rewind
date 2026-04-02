@@ -193,12 +193,7 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
     #[cfg(target_os = "linux")]
     let reshade_launch_hint: String = {
         match entry.and_then(|e| e.reshade.as_ref()).filter(|r| r.enabled) {
-            Some(r) if r.original_launch_options.is_some() => {
-                "\n  Launch options: written automatically".to_string()
-            }
-            Some(r) => {
-                format!("\n  Launch options (paste into Steam):\n  {}", r.api.linux_launch_command())
-            }
+            Some(r) => format!("\n  Launch options (paste into Steam):\n  {}", r.api.linux_launch_command()),
             None => String::new(),
         }
     };
