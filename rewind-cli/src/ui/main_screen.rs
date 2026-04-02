@@ -69,7 +69,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Status bar
     let status = Paragraph::new(
-        " [↑↓/jk] navigate  [D] download  [U] switch version  [O] SteamDB  [S] settings  [Q] quit ",
+        " [↑↓/jk] navigate  [D] download  [U] switch version  [R] reshade  [O] SteamDB  [S] settings  [Q] quit ",
     )
     .style(theme::help_bar());
     f.render_widget(status, outer[1]);
@@ -183,8 +183,34 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
         .map(|ids| ids.join(", "))
         .unwrap_or_else(|| "none".into());
 
+    let reshade_status = match entry.and_then(|e| e.reshade.as_ref()) {
+        None => "  [R] Set up ReShade".to_string(),
+        Some(r) if r.enabled => "  ReShade: enabled  [R] disable".to_string(),
+        Some(_) => "  ReShade: disabled  [R] enable".to_string(),
+    };
+
+    #[cfg(target_os = "linux")]
+    let reshade_launch_hint: String = {
+        match entry.and_then(|e| e.reshade.as_ref()).filter(|r| r.enabled) {
+            Some(r) if r.original_launch_options.is_some() => {
+                "\n  Launch options: written automatically".to_string()
+            }
+            Some(r) => {
+                format!("\n  Launch options (paste into Steam):\n  {}", r.api.linux_launch_command())
+            }
+            None => String::new(),
+        }
+    };
+    #[cfg(not(target_os = "linux"))]
+    let reshade_launch_hint = String::new();
+
+    let reshade_error_line = match &app.reshade_state.inline_error {
+        Some(e) => format!("\n  ReShade error: {}", e),
+        None => String::new(),
+    };
+
     let text = format!(
-        "  {name}\n  App ID:    {app_id}\n  Depot:     {depot_id}\n\n  Status:    {status}\n  Installed: {active}{spoofed}\n  Cached:    {cached}{launch}\n\n  [D] Download new version\n  [U] Switch version\n  [O] Open app on SteamDB",
+        "  {name}\n  App ID:    {app_id}\n  Depot:     {depot_id}\n\n  Status:    {status}\n  Installed: {active}{spoofed}\n  Cached:    {cached}{launch}\n\n  [D] Download new version\n  [U] Switch version\n  [O] Open app on SteamDB\n\n{reshade}{reshade_hint}{reshade_err}",
         name = game_name,
         app_id = game_app_id,
         depot_id = depot_id,
@@ -193,6 +219,9 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
         spoofed = spoofed_line,
         cached = cached_list,
         launch = launch_line,
+        reshade = reshade_status,
+        reshade_hint = reshade_launch_hint,
+        reshade_err = reshade_error_line,
     );
 
     let block = Block::default()
