@@ -2,6 +2,7 @@ pub mod downgrade_wizard;
 pub mod first_run;
 pub mod main_screen;
 pub mod settings;
+pub mod switch_overlay;
 pub mod theme;
 pub mod version_picker;
 
@@ -44,6 +45,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Screen::Settings => settings::draw(f, app),
         Screen::SwitchOverlay => {
             main_screen::draw(f, app);
+            switch_overlay::draw(f, app);
         }
     }
 }
