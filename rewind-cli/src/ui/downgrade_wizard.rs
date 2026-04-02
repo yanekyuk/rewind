@@ -36,13 +36,16 @@ pub fn draw(f: &mut Frame, app: &App) {
 
 /// The initial view: guidance text, manifest input, output log, help line.
 fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
+    let warn_height: u16 = if app.wizard_state.steam_warning { 1 } else { 0 };
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(6), // guidance text
-            Constraint::Length(3), // manifest input
-            Constraint::Min(0),   // error/output log
-            Constraint::Length(1), // help line
+            Constraint::Length(6),           // guidance text
+            Constraint::Length(warn_height), // steam warning (0 if not needed)
+            Constraint::Length(3),           // manifest input
+            Constraint::Min(0),              // error/output log
+            Constraint::Length(1),           // help line
         ])
         .split(area);
 
@@ -56,6 +59,13 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     )
     .style(theme::text());
     f.render_widget(guidance, layout[0]);
+
+    // Steam warning
+    if app.wizard_state.steam_warning {
+        let warn = Paragraph::new(" \u{26a0} Steam is running. Quit Steam before downloading.")
+            .style(theme::status_warning());
+        f.render_widget(warn, layout[1]);
+    }
 
     // Manifest ID input
     let cursor = if !app.wizard_state.is_downloading {
@@ -71,13 +81,12 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let input_block = Block::default()
         .title(" Manifest ID ")
         .borders(Borders::ALL)
-        .border_style(theme::border_focused())
-;
+        .border_style(theme::border_focused());
     let input_para =
         Paragraph::new(format!("{}{}", app.wizard_state.manifest_input, cursor))
             .style(input_style)
             .block(input_block);
-    f.render_widget(input_para, layout[1]);
+    f.render_widget(input_para, layout[2]);
 
     // Error / output log
     let (log_title, log_border_style) = if app.wizard_state.error.is_some() {
@@ -95,10 +104,9 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
     let log_block = Block::default()
         .title(log_title)
         .borders(Borders::ALL)
-        .border_style(log_border_style)
-;
+        .border_style(log_border_style);
     let log_list = List::new(log_items).block(log_block);
-    f.render_widget(log_list, layout[2]);
+    f.render_widget(log_list, layout[3]);
 
     // Help line
     let help_text = if app.wizard_state.error_url.is_some() {
@@ -107,7 +115,7 @@ fn draw_input_view(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
         " [P] patches   [M] manifests   [Enter] download   [Esc] cancel "
     };
     let help = Paragraph::new(help_text).style(theme::help_bar());
-    f.render_widget(help, layout[3]);
+    f.render_widget(help, layout[4]);
 }
 
 /// The download-in-progress view: steps on top, DepotDownloader output below.

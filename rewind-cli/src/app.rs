@@ -1,6 +1,7 @@
 use rewind_core::{
     config::{Config, GameEntry, GamesConfig},
     depot::DepotProgress,
+    reshade::ReshadeProgress,
     scanner::InstalledGame,
 };
 use std::collections::{HashMap, HashSet};
@@ -55,6 +56,7 @@ pub enum Screen {
     VersionPicker,
     SwitchOverlay,
     Settings,
+    ReshadeSetup,
 }
 
 #[derive(Debug, Default)]
@@ -74,6 +76,8 @@ pub struct DowngradeWizardState {
     pub prompt_input: Option<String>,
     /// The prompt label from DepotDownloader (e.g. "Password:").
     pub prompt_label: Option<String>,
+    /// Set when Steam is detected running on wizard open.
+    pub steam_warning: bool,
 }
 
 #[derive(Debug, Default)]
@@ -86,6 +90,10 @@ pub struct SettingsState {
 #[derive(Debug, Default)]
 pub struct VersionPickerState {
     pub selected_index: usize,
+    /// Set when Steam is detected running on screen open.
+    pub steam_warning: bool,
+    /// Set when an operation is blocked (e.g. Steam still running).
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Default)]
@@ -98,6 +106,26 @@ pub struct SwitchOverlayState {
     pub done: bool,
     /// Whether lock was skipped (switching to latest version).
     pub lock_skipped: bool,
+}
+
+#[derive(Debug, Default, PartialEq)]
+pub enum ReshadeSetupStep {
+    #[default]
+    PickApi,
+    ConfirmShaders,
+    Downloading,
+}
+
+#[derive(Debug, Default)]
+pub struct ReshadeSetupState {
+    pub step: ReshadeSetupStep,
+    pub selected_api: usize,      // index into [Dxgi, D3d9, OpenGl32, Vulkan1]
+    pub download_shaders: bool,
+    pub lines: Vec<String>,       // streamed progress lines from background task
+    pub done: bool,
+    pub error: Option<String>,
+    /// Inline error shown in detail panel (enable/disable failures).
+    pub inline_error: Option<String>,
 }
 
 #[derive(Default)]
@@ -140,10 +168,15 @@ pub struct App {
     pub depot_kill: Option<mpsc::Sender<()>>,
     pub image_state: ImageState,
     pub image_picker: Option<ratatui_image::picker::Picker>,
+    /// Launch options per appid, loaded lazily. Missing key = not yet attempted.
+    /// Some(None) = loaded, no options set. Some(Some(s)) = options string s.
+    pub launch_options_cache: HashMap<u32, Option<String>>,
     /// Receiver to get the stdin handle back after writing credentials.
     pub pending_stdin_return: Option<mpsc::Receiver<tokio::process::ChildStdin>>,
     /// Tracks when the last DepotDownloader output was received (for timeout detection).
     pub last_depot_output: Option<std::time::Instant>,
+    pub reshade_state: ReshadeSetupState,
+    pub reshade_progress_rx: Option<mpsc::Receiver<ReshadeProgress>>,
     pub should_quit: bool,
 }
 
@@ -166,8 +199,11 @@ impl App {
             depot_kill: None,
             image_state: ImageState::default(),
             image_picker: None,
+            launch_options_cache: HashMap::new(),
             pending_stdin_return: None,
             last_depot_output: None,
+            reshade_state: ReshadeSetupState::default(),
+            reshade_progress_rx: None,
             should_quit: false,
         }
     }

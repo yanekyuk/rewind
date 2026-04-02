@@ -69,7 +69,7 @@ pub fn draw(f: &mut Frame, app: &mut App) {
 
     // Status bar
     let status = Paragraph::new(
-        " [↑↓/jk] navigate  [D] download  [U] switch version  [O] SteamDB  [S] settings  [Q] quit ",
+        " [↑↓/jk] navigate  [D] download  [U] switch version  [R] reshade  [O] SteamDB  [S] settings  [Q] quit ",
     )
     .style(theme::help_bar());
     f.render_widget(status, outer[1]);
@@ -142,38 +142,82 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
 
     // Copy all data from game/entry before mutable borrow on image_state
     let game_app_id = game.app_id;
-    let entry = app.games_config.games.iter().find(|e| e.app_id == game_app_id);
+    let game_name = game.name.clone();
+    let game_manifest_id = game.manifest_id.clone();
+    let depot_id = game.depot_id;
 
-    let status_line = match entry {
-        Some(e) if e.active_manifest_id != e.latest_manifest_id => "▼ Updates disabled",
-        Some(_) => "✓ Updates enabled",
-        None => "  Updates enabled",
+    let entry = app.games_config.games.iter().find(|e| e.app_id == game_app_id);
+    let entry_active_manifest = entry.map(|e| e.active_manifest_id.clone());
+    let entry_latest_manifest = entry.map(|e| e.latest_manifest_id.clone());
+    let entry_cached_ids = entry.map(|e| e.cached_manifest_ids.clone());
+
+    // Populate launch options cache on first access for this appid.
+    if !app.launch_options_cache.contains_key(&game_app_id) {
+        let opts = rewind_core::scanner::find_launch_options(game_app_id);
+        app.launch_options_cache.insert(game_app_id, opts);
+    }
+
+    let launch_line = match app.launch_options_cache.get(&game_app_id) {
+        None => "\n  Launch:    \u{2026}".to_string(),
+        Some(None) => String::new(),
+        Some(Some(s)) => format!("\n  Launch:    {}", s),
     };
 
-    let active_manifest = entry
-        .map(|e| e.active_manifest_id.clone())
-        .unwrap_or_else(|| game.manifest_id.clone());
+    let status_line = match (&entry_active_manifest, &entry_latest_manifest) {
+        (Some(active), Some(latest)) if active != latest => "▼ Updates disabled",
+        (Some(_), _) => "✓ Updates enabled",
+        _ => "  Updates enabled",
+    };
 
-    let cached_list = entry
-        .map(|e| e.cached_manifest_ids.join(", "))
-        .unwrap_or_else(|| "none".into());
-
-    let spoofed_line = match entry {
-        Some(e) if e.active_manifest_id != e.latest_manifest_id => {
-            format!("\n  Spoofed as: {}", e.latest_manifest_id)
+    let spoofed_line = match (&entry_active_manifest, &entry_latest_manifest) {
+        (Some(active), Some(latest)) if active != latest => {
+            format!("\n  Spoofed as: {}", latest)
         }
         _ => String::new(),
     };
 
+    let active_manifest = entry_active_manifest
+        .unwrap_or_else(|| game_manifest_id);
+
+    let cached_list = entry_cached_ids
+        .map(|ids| ids.join(", "))
+        .unwrap_or_else(|| "none".into());
+
+
+    let reshade_status = match entry.and_then(|e| e.reshade.as_ref()) {
+        None => "  [R] Set up ReShade".to_string(),
+        Some(r) if r.enabled => "  ReShade: enabled  [R] disable".to_string(),
+        Some(_) => "  ReShade: disabled  [R] enable".to_string(),
+    };
+
+    #[cfg(target_os = "linux")]
+    let reshade_launch_hint: String = {
+        match entry.and_then(|e| e.reshade.as_ref()).filter(|r| r.enabled) {
+            Some(r) => format!("\n  Launch options (paste into Steam):\n  {}", r.api.linux_launch_command()),
+            None => String::new(),
+        }
+    };
+    #[cfg(not(target_os = "linux"))]
+    let reshade_launch_hint = String::new();
+
+    let reshade_error_line = match &app.reshade_state.inline_error {
+        Some(e) => format!("\n  ReShade error: {}", e),
+        None => String::new(),
+    };
+
     let text = format!(
-        "  {name}\n  App ID:    {app_id}\n  Depot:     {depot_id}\n\n  Status:    {status}\n  Installed: {active}{spoofed}\n  Cached:    {cached}\n\n  [D] Download new version\n  [U] Switch version\n  [O] Open app on SteamDB",
-        name = game.name,
-        app_id = game.app_id,
-        depot_id = game.depot_id,
+        "  {name}\n  App ID:    {app_id}\n  Depot:     {depot_id}\n\n  Status:    {status}\n  Installed: {active}{spoofed}\n  Cached:    {cached}{launch}\n\n  [D] Download new version\n  [U] Switch version\n  [O] Open app on SteamDB\n\n{reshade}{reshade_hint}{reshade_err}",
+        name = game_name,
+        app_id = game_app_id,
+        depot_id = depot_id,
         status = status_line,
         active = active_manifest,
         spoofed = spoofed_line,
         cached = cached_list,
+        launch = launch_line,
+        reshade = reshade_status,
+        reshade_hint = reshade_launch_hint,
+        reshade_err = reshade_error_line,
     );
 
     let block = Block::default()
@@ -184,19 +228,19 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Render hero image in the top portion if available, with text below.
+    // Render text at top; hero image below if available.
     if let Some(protocol) = app.image_state.protocols.get_mut(&game_app_id) {
         let split = Layout::default()
             .direction(Direction::Vertical)
-            .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
+            .constraints([Constraint::Percentage(60), Constraint::Percentage(40)])
             .split(inner);
+
+        let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
+        f.render_widget(para, split[0]);
 
         // Image fills its area with no additional margin
         let widget = StatefulImage::default();
-        f.render_stateful_widget(widget, split[0], protocol);
-
-        let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
-        f.render_widget(para, split[1]);
+        f.render_stateful_widget(widget, split[1], protocol);
     } else {
         let para = Paragraph::new(text).wrap(Wrap { trim: false }).style(theme::text());
         f.render_widget(para, inner);

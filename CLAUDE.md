@@ -6,8 +6,8 @@ Steam game version downgrade manager with a ratatui TUI.
 
 Rust workspace with two crates:
 
-- **rewind-core** — Business logic library: DepotDownloader management, file caching/symlinking, ACF patching, immutability locking, Steam library scanning
-- **rewind-cli** — TUI binary using ratatui + crossterm. Screens: Main, DowngradeWizard, VersionPicker, SwitchOverlay, Settings, FirstRun
+- **rewind-core** — Business logic library: DepotDownloader management, file caching/symlinking, ACF patching, immutability locking, Steam library scanning, ReShade download/symlink management
+- **rewind-cli** — TUI binary using ratatui + crossterm. Screens: Main, DowngradeWizard, VersionPicker, SwitchOverlay, Settings, FirstRun, ReshadeSetup
 
 ## Build & Test
 
@@ -32,23 +32,55 @@ Note: 2 immutability tests (`lock_and_unlock_file`, `is_locked_reflects_state`) 
 
 Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `style:`
 
+## Branching Strategy
+
+- **`next`** — integration branch for all new development; features and fixes land here first
+- **`main`** — stable release branch; only receives merges via `release/*` or `hotfix/*` branches
+- **`release/X.Y.Z`** — release preparation branch cut from `next`; merged into `main` then back into `next`
+- **`hotfix/X.Y.Z`** — emergency fix branch cut from `main`; merged into `main` then back into `next`
+
+All feature branches are based off `next` and merged back into `next`. Never merge directly to `main` during development.
+
 ## Implementation Workflow
 
-When implementing features or fixes, always use subagent-driven development within a git worktree for isolation.
+When implementing features or fixes, always use subagent-driven development within a git worktree for isolation. Base worktrees off `next`.
 
 ## Before Finishing a Branch
 
-Before merging or creating a PR, always:
+Before merging or creating a PR (targeting `next`), always:
 
-1. **Bump versions** in `rewind-core/Cargo.toml` and `rewind-cli/Cargo.toml` if any features or fixes were added
-2. **Update CLAUDE.md** if architecture, conventions, or build instructions changed
-3. **Update README.md** if user-facing behavior, keybindings, or setup instructions changed
+1. **Update CLAUDE.md** if architecture, conventions, or build instructions changed
+2. **Update README.md** if user-facing behavior, keybindings, or setup instructions changed
+
+Version bumps and changelog entries happen on the `release/*` or `hotfix/*` branch, not on feature branches.
 
 ## Creating Releases
 
-Use annotated tags with release notes:
+When `next` is ready to release:
+
+1. Cut a `release/X.Y.Z` branch from `next`
+2. Bump versions in `rewind-core/Cargo.toml` and `rewind-cli/Cargo.toml`
+3. Write the changelog entry in `CHANGELOG.md`
+4. Open a PR from `release/X.Y.Z` targeting **both** `main` and `next` — merge into `main` first, then into `next`
+5. Tag `main` with an annotated tag (the tag triggers binary builds in CI):
 
 ```sh
-git tag -a v0.2.0 -m "Release notes here..."
-git push origin v0.2.0
+git tag -a vX.Y.Z -m "$(cat <<'EOF'
+Release vX.Y.Z
+
+## What's Changed
+- ...
+EOF
+)"
+git push origin vX.Y.Z
 ```
+
+## Creating Hotfixes
+
+For urgent fixes on the current release:
+
+1. Cut a `hotfix/X.Y.Z` branch from `main`
+2. Apply the fix and bump the patch version in both `Cargo.toml` files
+3. Write the changelog entry in `CHANGELOG.md`
+4. Open a PR from `hotfix/X.Y.Z` targeting **both** `main` and `next` — merge into `main` first, then into `next`
+5. Tag `main` with an annotated tag (same format as releases above)

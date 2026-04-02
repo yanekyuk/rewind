@@ -50,6 +50,24 @@ pub struct GameEntry {
     #[serde(default)]
     pub cached_manifest_ids: Vec<String>,
     pub acf_locked: bool,
+    #[serde(default)]
+    pub reshade: Option<ReshadeEntry>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ReshadeApi {
+    Dxgi,
+    D3d9,
+    OpenGl32,
+    Vulkan1,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ReshadeEntry {
+    pub api: ReshadeApi,
+    pub enabled: bool,
+    pub shaders_enabled: bool,
 }
 
 impl GameEntry {
@@ -152,6 +170,7 @@ mod tests {
                 latest_buildid: "22560074".into(),
                 cached_manifest_ids: vec!["abc123".into(), "def456".into()],
                 acf_locked: true,
+                reshade: None,
             }],
         };
         let toml_str = toml::to_string_pretty(&games).unwrap();
@@ -194,9 +213,41 @@ mod tests {
             latest_buildid: "99999".into(),
             cached_manifest_ids: vec![],
             acf_locked: false,
+            reshade: None,
         };
         let acf = entry.acf_path();
         assert!(acf.to_string_lossy().ends_with("appmanifest_1234.acf"));
         assert!(acf.to_string_lossy().contains("steamapps"));
+    }
+
+    #[test]
+    fn reshade_api_serde_roundtrip() {
+        let entry = ReshadeEntry {
+            api: ReshadeApi::Dxgi,
+            enabled: true,
+            shaders_enabled: false,
+        };
+        let s = toml::to_string_pretty(&entry).unwrap();
+        let parsed: ReshadeEntry = toml::from_str(&s).unwrap();
+        assert!(matches!(parsed.api, ReshadeApi::Dxgi));
+        assert!(parsed.enabled);
+        assert!(!parsed.shaders_enabled);
+    }
+
+    #[test]
+    fn game_entry_without_reshade_field_deserializes() {
+        // Simulates an existing games.toml entry written before ReShade support
+        let toml_str = r#"
+name = "Game"
+app_id = 1234
+depot_id = 5678
+install_path = "/games/game"
+active_manifest_id = "abc"
+latest_manifest_id = "abc"
+cached_manifest_ids = []
+acf_locked = false
+"#;
+        let entry: GameEntry = toml::from_str(toml_str).unwrap();
+        assert!(entry.reshade.is_none());
     }
 }

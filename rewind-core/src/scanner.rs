@@ -198,6 +198,28 @@ fn extract_first_depot(content: &str) -> Option<(u32, String)> {
     None
 }
 
+/// Like `extract_quoted` but handles VDF escape sequences (`\"` → `"`, `\\` → `\`).
+/// Returns an owned String since the value may be transformed.
+fn extract_quoted_escaped(s: &str) -> Option<String> {
+    let s = s.trim();
+    if !s.starts_with('"') {
+        return None;
+    }
+    let mut result = String::new();
+    let mut chars = s[1..].chars();
+    loop {
+        match chars.next()? {
+            '"' => return Some(result),
+            '\\' => match chars.next()? {
+                '"' => result.push('"'),
+                '\\' => result.push('\\'),
+                c => { result.push('\\'); result.push(c); }
+            },
+            c => result.push(c),
+        }
+    }
+}
+
 fn extract_quoted(s: &str) -> Option<&str> {
     let s = s.trim();
     if s.starts_with('"') {
@@ -215,6 +237,94 @@ fn extract_quoted_only(s: &str) -> Option<&str> {
     } else {
         None
     }
+}
+
+/// Read launch options for a game from the most recently modified localconfig.vdf
+/// found under `steam_root/userdata/*/config/localconfig.vdf`.
+/// Returns `None` if not found, Steam root has no userdata, or options are empty.
+pub fn read_launch_options(steam_root: &Path, app_id: u32) -> Option<String> {
+    let userdata = steam_root.join("userdata");
+    let entries = std::fs::read_dir(&userdata).ok()?;
+
+    let mut best: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+    for entry in entries.flatten() {
+        let vdf_path = entry.path().join("config").join("localconfig.vdf");
+        if vdf_path.exists() {
+            if let Ok(meta) = std::fs::metadata(&vdf_path) {
+                if let Ok(mtime) = meta.modified() {
+                    if best.as_ref().map_or(true, |(t, _)| mtime > *t) {
+                        best = Some((mtime, vdf_path));
+                    }
+                }
+            }
+        }
+    }
+
+    let (_, vdf_path) = best?;
+    let content = std::fs::read_to_string(&vdf_path).ok()?;
+    extract_launch_options_from_vdf(&content, app_id)
+}
+
+/// Convenience wrapper: resolves Steam root via steamlocate, then calls `read_launch_options`.
+/// Returns `None` if Steam is not found or the game has no launch options set.
+pub fn find_launch_options(app_id: u32) -> Option<String> {
+    use steamlocate::SteamDir;
+    let steam_dir = SteamDir::locate().ok()?;
+    read_launch_options(steam_dir.path(), app_id)
+}
+
+fn extract_launch_options_from_vdf(content: &str, app_id: u32) -> Option<String> {
+    let app_id_key = format!("\"{}\"", app_id);
+    let mut in_apps = false;
+    let mut in_target_app = false;
+    let mut depth = 0i32;
+    let mut apps_depth = -1i32;
+    let mut app_depth = -1i32;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed == "{" {
+            depth += 1;
+            if in_apps && !in_target_app && apps_depth < 0 {
+                apps_depth = depth;
+            }
+            if in_target_app && app_depth < 0 {
+                app_depth = depth;
+            }
+            continue;
+        }
+
+        if trimmed == "}" {
+            depth -= 1;
+            if in_target_app && depth < app_depth {
+                in_target_app = false;
+                app_depth = -1;
+            }
+            if in_apps && !in_target_app && depth < apps_depth {
+                return None;
+            }
+            continue;
+        }
+
+        if !in_apps && trimmed == "\"apps\"" && depth == 4 {
+            in_apps = true;
+            continue;
+        }
+
+        if in_apps && !in_target_app && trimmed == app_id_key {
+            in_target_app = true;
+            continue;
+        }
+
+        if in_target_app && trimmed.starts_with("\"LaunchOptions\"") {
+            let rest = &trimmed["\"LaunchOptions\"".len()..];
+            if let Some(val) = extract_quoted_escaped(rest) {
+                return if val.is_empty() { None } else { Some(val) };
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
@@ -299,5 +409,208 @@ mod tests {
         fs::write(tmp.path().join("appmanifest_999.acf"), content).unwrap();
         let games = scan_library(tmp.path()).unwrap();
         assert!(games.is_empty());
+    }
+
+    #[test]
+    fn extract_launch_options_finds_value() {
+        let vdf = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "12345"
+                    {
+                        "LaunchOptions"		"-novid %command%"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(
+            extract_launch_options_from_vdf(vdf, 12345),
+            Some("-novid %command%".to_string())
+        );
+    }
+
+    #[test]
+    fn extract_launch_options_returns_none_for_missing_app() {
+        let vdf = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "99999"
+                    {
+                        "LaunchOptions"		"-novid %command%"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(extract_launch_options_from_vdf(vdf, 12345), None);
+    }
+
+    #[test]
+    fn extract_launch_options_returns_none_for_empty_value() {
+        let vdf = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "12345"
+                    {
+                        "LaunchOptions"		""
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(extract_launch_options_from_vdf(vdf, 12345), None);
+    }
+
+    #[test]
+    fn extract_launch_options_returns_none_for_absent_key() {
+        let vdf = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "12345"
+                    {
+                        "LastPlayed"		"1234567890"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(extract_launch_options_from_vdf(vdf, 12345), None);
+    }
+
+    #[test]
+    fn extract_launch_options_ignores_apps_at_wrong_depth() {
+        // "apps" appearing at depth != 4 must not be matched
+        let vdf = r#""UserLocalConfigStore"
+{
+    "apps"
+    {
+        "12345"
+        {
+            "LaunchOptions"		"wrong"
+        }
+    }
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "12345"
+                    {
+                        "LaunchOptions"		"correct"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        assert_eq!(
+            extract_launch_options_from_vdf(vdf, 12345),
+            Some("correct".to_string())
+        );
+    }
+
+    #[test]
+    fn read_launch_options_finds_value_in_userdata() {
+        let tmp = TempDir::new().unwrap();
+        let user_dir = tmp.path().join("userdata").join("123456").join("config");
+        fs::create_dir_all(&user_dir).unwrap();
+
+        let vdf_content = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "42"
+                    {
+                        "LaunchOptions"		"DXVK_ASYNC=1 %command%"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        fs::write(user_dir.join("localconfig.vdf"), vdf_content).unwrap();
+
+        assert_eq!(
+            read_launch_options(tmp.path(), 42),
+            Some("DXVK_ASYNC=1 %command%".to_string())
+        );
+    }
+
+    #[test]
+    fn read_launch_options_returns_none_when_no_userdata() {
+        let tmp = TempDir::new().unwrap();
+        assert_eq!(read_launch_options(tmp.path(), 42), None);
+    }
+
+    #[test]
+    fn read_launch_options_returns_none_when_app_not_found() {
+        let tmp = TempDir::new().unwrap();
+        let user_dir = tmp.path().join("userdata").join("123456").join("config");
+        fs::create_dir_all(&user_dir).unwrap();
+
+        let vdf_content = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "99"
+                    {
+                        "LaunchOptions"		"-novid"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        fs::write(user_dir.join("localconfig.vdf"), vdf_content).unwrap();
+
+        assert_eq!(read_launch_options(tmp.path(), 42), None);
     }
 }

@@ -1,6 +1,8 @@
-# rewind
-
-> Roll back. Play the old way.
+<p align="center">
+  <img src="assets/logo.svg" alt="Rewind — pixelated gear icon with circular rewind arrow in Steam blue" width="120" /><br/>
+  <img src="assets/logo-text.svg" alt="REWIND" /><br/>
+  <img src="assets/logo-tagline.svg" alt="──────── Roll back. Play the old way. ────────" />
+</p>
 
 `rewind` is a cross-platform tool for managing Steam game version downgrades. It gives you a full-screen interactive TUI to browse your installed games, downgrade to any previous version, and switch between cached versions instantly — no re-downloading required.
 
@@ -14,6 +16,7 @@
 │   Elden Ring    │  Installed: manifest abc123        │
 │   Dark Souls III│  Spoofed as: manifest def456       │
 │                 │  Cached:    1.00, 1.01             │
+│                 │  Launch:    -high -novid           │
 │                 │                                    │
 │                 │  [D] Download   [U] Switch version │
 │                 │  [O] Open SteamDB                  │
@@ -29,8 +32,12 @@
 - **Instant version switching** — cached versions switch via symlink repoint, no download needed
 - **Delta caching** — only stores files that differ between manifests, not entire game copies
 - **ACF patching & locking** — patches `appmanifest_*.acf` and locks it to prevent Steam auto-updates
+- **Launch options display** — shows configured Steam launch options in the game detail panel
+- **ReShade integration** — download ReShade automatically and enable it per-game via symlinks; on Linux, the required `WINEDLLOVERRIDES` launch command is shown for copy-pasting into Steam
 - **Auto DepotDownloader setup** — downloads and manages the DepotDownloader binary for you
 - **Persistent config** — Steam credentials and library paths stored once, never asked again
+- **Steam process detection** — warns before operations when Steam is running to avoid conflicts
+- **Game artwork** — fetches and displays hero images from Steam CDN in the detail panel
 - **Cross-platform** — Linux, macOS, and Windows
 
 ---
@@ -98,10 +105,10 @@ Go to the [Releases](https://github.com/yanekyuk/rewind/releases) page and downl
 
 | Platform | File |
 |----------|------|
-| Windows (64-bit) | [`rewind-x86_64-windows.zip`](https://github.com/yanekyuk/rewind/releases/download/v0.4.0/rewind-x86_64-windows.zip) |
-| macOS (Apple Silicon) | [`rewind-aarch64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.0/rewind-aarch64-macos.tar.gz) |
-| macOS (Intel) | [`rewind-x86_64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.0/rewind-x86_64-macos.tar.gz) |
-| Linux (64-bit) | [`rewind-x86_64-linux.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.0/rewind-x86_64-linux.tar.gz) |
+| Windows (64-bit) | [`rewind-x86_64-windows.zip`](https://github.com/yanekyuk/rewind/releases/download/v0.5.0/rewind-x86_64-windows.zip) |
+| macOS (Apple Silicon) | [`rewind-aarch64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.5.0/rewind-aarch64-macos.tar.gz) |
+| macOS (Intel) | [`rewind-x86_64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.5.0/rewind-x86_64-macos.tar.gz) |
+| Linux (64-bit) | [`rewind-x86_64-linux.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.5.0/rewind-x86_64-linux.tar.gz) |
 
 `rewind` is a terminal application — it always needs to be launched from a terminal window. It cannot be opened by double-clicking.
 
@@ -153,7 +160,9 @@ sudo mv rewind /usr/local/bin/rewind
 
 **Windows** — Run `rewind` as Administrator. Symlink creation requires elevated privileges.
 
-**Linux** — Most features work without any special permissions. The one exception is **ACF locking**: `rewind` locks the game's manifest file to stop Steam from auto-updating over your downgraded version. This uses `chattr +i` under the hood, which requires a specific Linux privilege.
+**Linux** — ReShade download requires `libarchive` (used to extract the NSIS installer). It is pre-installed on most distributions; if missing: `sudo pacman -S libarchive` / `sudo apt-get install libarchive13` / `sudo dnf install libarchive`.
+
+Most features work without any special permissions. The one exception is **ACF locking**: `rewind` locks the game's manifest file to stop Steam from auto-updating over your downgraded version. This uses `chattr +i` under the hood, which requires a specific Linux privilege.
 
 You do **not** need to run `sudo rewind`. Instead, grant only the required privilege to the binary once:
 
@@ -169,13 +178,16 @@ If you skip this step, `rewind` will still work but falls back to read-only file
 
 ## Keybindings
 
-| Key | Action                          |
-|-----|---------------------------------|
-| `D` | Download new version            |
-| `U` | Switch between cached versions  |
-| `O` | Open SteamDB page               |
-| `S` | Settings                        |
-| `Q` | Quit                            |
+| Key         | Action                          |
+|-------------|---------------------------------|
+| `↑` / `k`   | Move up in game list            |
+| `↓` / `j`   | Move down in game list          |
+| `D`         | Download new version            |
+| `U`         | Switch between cached versions  |
+| `R`         | ReShade setup / toggle          |
+| `O`         | Open SteamDB page               |
+| `S`         | Settings                        |
+| `Q` / `Esc` | Quit                            |
 
 ### Download Wizard
 
@@ -184,7 +196,24 @@ If you skip this step, `rewind` will still work but falls back to read-only file
 | `P`     | Open SteamDB patches page       |
 | `M`     | Open SteamDB manifests page     |
 | `Enter` | Download pasted manifest ID     |
+| `R`     | Restart in terminal mode (on error) |
 | `Esc`   | Cancel                          |
+
+### Version Picker
+
+| Key     | Action                          |
+|---------|---------------------------------|
+| `↑` / `↓` | Select version                |
+| `Enter` | Switch to selected version      |
+| `Esc`   | Cancel                          |
+
+### Settings
+
+| Key     | Action                          |
+|---------|---------------------------------|
+| `Tab`   | Switch between fields           |
+| `Enter` | Save / add library path         |
+| `Esc`   | Back to main screen             |
 
 ## Data Directory
 

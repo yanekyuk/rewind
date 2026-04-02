@@ -1,6 +1,7 @@
 pub mod downgrade_wizard;
 pub mod first_run;
 pub mod main_screen;
+pub mod reshade_setup;
 pub mod settings;
 pub mod switch_overlay;
 pub mod theme;
@@ -46,6 +47,10 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         Screen::SwitchOverlay => {
             main_screen::draw(f, app);
             switch_overlay::draw(f, app);
+        }
+        Screen::ReshadeSetup => {
+            main_screen::draw(f, app);
+            reshade_setup::draw(f, app);
         }
     }
 }
