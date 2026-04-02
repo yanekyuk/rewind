@@ -182,8 +182,72 @@ Enable/disable errors (e.g. `SymlinkConflict`) are shown as an inline error in t
 | reshade.me URL unreachable | Error shown in setup overlay with message: "Download failed — place ReShade64.dll manually in `~/.local/share/rewind/bin/`" |
 | Disable with game running | No detection; same policy as the rest of rewind |
 
+## Steam Launch Options Integration (Linux)
+
+On Linux, after enabling ReShade, rewind automatically writes `WINEDLLOVERRIDES="<api>=n,b" %command%` to the game's `LaunchOptions` in Steam's `localconfig.vdf`. This removes the need to copy-paste the command manually.
+
+### `rewind-core/src/localconfig.rs` (new module)
+
+`localconfig.vdf` lives at `<Steam data dir>/userdata/<steamid>/config/localconfig.vdf`. The Steam data dir is found via `steamlocate::SteamDir` (already a dependency), making the path resolution cross-platform.
+
+```rust
+pub fn find_localconfig_paths() -> Vec<PathBuf>
+// Uses SteamDir to find the Steam root, then scans userdata/<id>/config/localconfig.vdf
+// for each Steam account directory. Cross-platform.
+
+pub fn read_launch_options(path: &Path, app_id: u32) -> Option<String>
+// Parses the VDF file and returns the LaunchOptions value for the given app_id.
+
+pub fn write_launch_options(path: &Path, app_id: u32, options: &str) -> Result<(), LocalConfigError>
+// Replaces (or inserts) the LaunchOptions key for the given app_id in the VDF file.
+```
+
+VDF parsing uses a simple line-by-line state machine — no additional crate required. The VDF KeyValues format is regular enough: quoted string keys/values, `{`/`}` for nesting.
+
+### `ReshadeEntry` addition
+
+```rust
+pub struct ReshadeEntry {
+    pub api: ReshadeApi,
+    pub enabled: bool,
+    pub shaders_enabled: bool,
+    #[serde(default)]
+    pub original_launch_options: Option<String>,  // saved before we overwrite
+}
+```
+
+### On enable (Linux only, in `finalize_reshade`)
+
+1. Call `find_localconfig_paths()` — use the first path found that contains the app
+2. Call `read_launch_options(path, app_id)` — save result to `ReshadeEntry.original_launch_options`
+3. Call `write_launch_options(path, app_id, api.linux_launch_command())` — writes `WINEDLLOVERRIDES="dxgi=n,b" %command%`
+4. If no localconfig found or write fails: log silently, show the old hint in the detail panel as fallback
+
+### On disable (Linux only, in `[R]` disable branch)
+
+1. Call `find_localconfig_paths()`, `write_launch_options(path, app_id, original)` where `original` is `reshade_entry.original_launch_options.as_deref().unwrap_or("")`
+
+### Detail panel (Linux)
+
+- When enabled and localconfig write succeeded: `Launch options: written automatically`
+- When enabled and localconfig write failed (or no localconfig found): show `WINEDLLOVERRIDES="..." %command%` as the manual hint (existing behaviour)
+
+## Error Handling
+
+| Scenario | Behavior |
+|---|---|
+| DLL already in `bin_dir` | `download_reshade` skips download, returns immediately |
+| Shaders already cached | `download_shaders` skips download, returns immediately |
+| `dxgi.dll` is a real file in game dir | `enable_reshade` returns `SymlinkConflict`; shown as inline error in detail panel |
+| reshade.me URL unreachable | Error shown in setup overlay with message: "Download failed — place ReShade64.dll manually in `~/.local/share/rewind/bin/`" |
+| localconfig.vdf not found | Silent — show manual launch hint in detail panel |
+| localconfig.vdf write fails | Silent — show manual launch hint in detail panel |
+| Disable with game running | No detection; same policy as the rest of rewind |
+
 ## Platform Notes
 
-- `ReshadeApi::linux_launch_command` is available on all platforms but the detail panel hint is only rendered on Linux (`#[cfg(target_os = "linux")]`)
-- Windows and macOS: no launch command shown — the DLL symlink is sufficient
+- `ReshadeApi::linux_launch_command` is available on all platforms but only used on Linux
+- `localconfig.vdf` path resolution is cross-platform (via `steamlocate::SteamDir`)
+- Launch options are only written/restored on Linux (`#[cfg(target_os = "linux")]`)
+- Windows and macOS: DLL symlink is sufficient; no launch options written
 - Only 64-bit (`ReShade64.dll`) is supported; 32-bit games are out of scope
