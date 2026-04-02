@@ -528,12 +528,9 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
 }
 
 fn handle_switch_overlay(app: &mut App, key: KeyCode) {
-    match key {
-        KeyCode::Esc => {
-            app.switch_overlay_state = app::SwitchOverlayState::default();
-            app.screen = Screen::Main;
-        }
-        _ => {}
+    if key == KeyCode::Esc && app.switch_overlay_state.done {
+        app.switch_overlay_state = app::SwitchOverlayState::default();
+        app.screen = Screen::Main;
     }
 }
 
@@ -712,6 +709,7 @@ fn switch_to_cached_version(app: &mut App, manifest_id: String, is_latest: bool)
             &app::StepKind::RepointSymlinks,
             app::StepStatus::Failed(e.to_string()),
         );
+        app.switch_overlay_state.done = true;
         return;
     }
     app.set_switch_step_status(&app::StepKind::RepointSymlinks, app::StepStatus::Done);
@@ -744,6 +742,7 @@ fn switch_to_cached_version(app: &mut App, manifest_id: String, is_latest: bool)
         depot_id,
     ) {
         app.set_switch_step_status(&app::StepKind::PatchAcf, app::StepStatus::Failed(e.to_string()));
+        app.switch_overlay_state.done = true;
         return;
     }
     app.set_switch_step_status(&app::StepKind::PatchAcf, app::StepStatus::Done);
@@ -761,6 +760,7 @@ fn switch_to_cached_version(app: &mut App, manifest_id: String, is_latest: bool)
                 &app::StepKind::LockAcf,
                 app::StepStatus::Failed(e.to_string()),
             );
+            app.switch_overlay_state.done = true;
             return;
         }
         app.set_switch_step_status(&app::StepKind::LockAcf, app::StepStatus::Done);
