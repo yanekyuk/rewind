@@ -298,6 +298,7 @@ async fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
         Screen::DowngradeWizard => handle_wizard(app, key),
         Screen::VersionPicker => handle_version_picker(app, key),
         Screen::Settings => handle_settings(app, key),
+        Screen::SwitchOverlay => handle_switch_overlay(app, key),
     }
 }
 
@@ -319,18 +320,10 @@ fn handle_main(app: &mut App, key: KeyCode) {
         KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
         KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
         KeyCode::Char('d') => {
-            let has_cached = app
-                .selected_game_entry()
-                .map(|e| e.cached_manifest_ids.len() > 1)
-                .unwrap_or(false);
-
-            if has_cached {
-                app.version_picker_state.selected_index = 0;
-                app.screen = Screen::VersionPicker;
-            } else if let Some(g) = app.selected_game() {
-                let url = rewind_core::steamdb::depot_manifests_url(g.depot_id);
+            if let Some(g) = app.selected_game() {
                 app.wizard_state = DowngradeWizardState {
-                    steamdb_url: url,
+                    app_id: g.app_id,
+                    depot_id: g.depot_id,
                     ..Default::default()
                 };
                 app.screen = Screen::DowngradeWizard;
@@ -341,27 +334,6 @@ fn handle_main(app: &mut App, key: KeyCode) {
             if app.selected_game_entry().map(|e| e.cached_manifest_ids.len() > 1).unwrap_or(false) {
                 app.version_picker_state.selected_index = 0;
                 app.screen = Screen::VersionPicker;
-            }
-        }
-        KeyCode::Char('l') => {
-            // Toggle ACF lock
-            let app_id = app.selected_game().map(|g| g.app_id);
-            if let Some(aid) = app_id {
-                if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == aid) {
-                    let acf = entry.acf_path();
-                    if entry.acf_locked {
-                        if let Err(e) = rewind_core::immutability::unlock_file(&acf) {
-                            eprintln!("Warning: failed to unlock ACF: {}", e);
-                        }
-                        entry.acf_locked = false;
-                    } else {
-                        if let Err(e) = rewind_core::immutability::lock_file(&acf) {
-                            eprintln!("Warning: failed to lock ACF: {}", e);
-                        }
-                        entry.acf_locked = true;
-                    }
-                    let _ = config::save_games(&app.games_config);
-                }
             }
         }
         KeyCode::Char('s') => {
@@ -437,13 +409,22 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
             app.screen = Screen::Main;
             app.wizard_state = DowngradeWizardState::default();
         }
+        KeyCode::Char('p') => {
+            if !app.wizard_state.is_downloading {
+                let url = rewind_core::steamdb::app_patchnotes_url(app.wizard_state.app_id);
+                let _ = open::that(url);
+            }
+        }
+        KeyCode::Char('m') => {
+            if !app.wizard_state.is_downloading {
+                let url = rewind_core::steamdb::depot_manifests_url(app.wizard_state.depot_id);
+                let _ = open::that(url);
+            }
+        }
         KeyCode::Char('o') => {
-            let url = if let Some(ref err_url) = app.wizard_state.error_url {
-                err_url.clone()
-            } else {
-                app.wizard_state.steamdb_url.clone()
-            };
-            let _ = open::that(url);
+            if let Some(ref url) = app.wizard_state.error_url {
+                let _ = open::that(url.clone());
+            }
         }
         KeyCode::Backspace => {
             if !app.wizard_state.is_downloading {
@@ -504,11 +485,52 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                 .cloned();
 
             if let Some(manifest_id) = target_manifest {
-                switch_to_cached_version(app, manifest_id);
+                // Check if this is the currently installed manifest
+                let is_current = app
+                    .selected_game_entry()
+                    .map(|e| e.active_manifest_id == manifest_id)
+                    .unwrap_or(false);
+
+                if is_current {
+                    app.screen = Screen::Main;
+                    return;
+                }
+
+                let is_latest = app
+                    .selected_game_entry()
+                    .map(|e| e.latest_manifest_id == manifest_id)
+                    .unwrap_or(false);
+
+                // Initialize switch overlay steps
+                let mut steps = vec![
+                    (app::StepKind::RepointSymlinks, app::StepStatus::Pending),
+                    (app::StepKind::PatchAcf, app::StepStatus::Pending),
+                ];
+                if is_latest {
+                    steps.push((app::StepKind::LockAcf, app::StepStatus::Done));
+                } else {
+                    steps.push((app::StepKind::LockAcf, app::StepStatus::Pending));
+                }
+
+                app.switch_overlay_state = app::SwitchOverlayState {
+                    steps,
+                    target_manifest: manifest_id.clone(),
+                    done: false,
+                    lock_skipped: is_latest,
+                };
+                app.screen = Screen::SwitchOverlay;
+
+                switch_to_cached_version(app, manifest_id, is_latest);
             }
-            app.screen = Screen::Main;
         }
         _ => {}
+    }
+}
+
+fn handle_switch_overlay(app: &mut App, key: KeyCode) {
+    if key == KeyCode::Esc && app.switch_overlay_state.done {
+        app.switch_overlay_state = app::SwitchOverlayState::default();
+        app.screen = Screen::Main;
     }
 }
 
@@ -667,7 +689,7 @@ fn start_download(app: &mut App) {
     });
 }
 
-fn switch_to_cached_version(app: &mut App, manifest_id: String) {
+fn switch_to_cached_version(app: &mut App, manifest_id: String, is_latest: bool) {
     let Some(game) = app.selected_game().cloned() else {
         return;
     };
@@ -680,40 +702,75 @@ fn switch_to_cached_version(app: &mut App, manifest_id: String) {
         &manifest_id,
     );
 
+    // Step 1: Repoint symlinks
+    app.set_switch_step_status(&app::StepKind::RepointSymlinks, app::StepStatus::InProgress);
     if let Err(e) = rewind_core::cache::repoint_symlinks(&game.install_path, &new_cache) {
-        eprintln!("Failed to switch version: {}", e);
+        app.set_switch_step_status(
+            &app::StepKind::RepointSymlinks,
+            app::StepStatus::Failed(e.to_string()),
+        );
+        app.switch_overlay_state.done = true;
         return;
     }
+    app.set_switch_step_status(&app::StepKind::RepointSymlinks, app::StepStatus::Done);
 
-    if let Some(entry) = app
+    // Extract data from entry before doing step-status updates (to avoid borrow conflict)
+    let entry_data = app
         .games_config
         .games
-        .iter_mut()
+        .iter()
         .find(|e| e.app_id == game.app_id)
-    {
+        .map(|e| (e.acf_path(), e.latest_buildid.clone(), e.latest_manifest_id.clone(), e.depot_id));
+
+    let Some((acf_path, buildid, manifest_for_acf, depot_id)) = entry_data else {
+        return;
+    };
+
+    // Update active_manifest_id
+    if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game.app_id) {
         entry.active_manifest_id = manifest_id.clone();
-        // Patch the ACF with the latest buildid/manifest to trick Steam into thinking
-        // the game is already on the newest version, suppressing update prompts.
-        let latest_buildid = entry.latest_buildid.clone();
-        let latest_manifest = entry.latest_manifest_id.clone();
-        let depot_id = entry.depot_id;
-        let acf_path = entry.acf_path();
-        let _ = rewind_core::immutability::unlock_file(&acf_path);
-        if let Err(e) = rewind_core::patcher::patch_acf_file(
-            &acf_path,
-            &latest_buildid,
-            &latest_manifest,
-            depot_id,
-        ) {
-            eprintln!("Warning: failed to patch ACF: {}", e);
+    }
+
+    // Step 2: Patch ACF
+    app.set_switch_step_status(&app::StepKind::PatchAcf, app::StepStatus::InProgress);
+    let _ = rewind_core::immutability::unlock_file(&acf_path);
+
+    if let Err(e) = rewind_core::patcher::patch_acf_file(
+        &acf_path,
+        &buildid,
+        &manifest_for_acf,
+        depot_id,
+    ) {
+        app.set_switch_step_status(&app::StepKind::PatchAcf, app::StepStatus::Failed(e.to_string()));
+        app.switch_overlay_state.done = true;
+        return;
+    }
+    app.set_switch_step_status(&app::StepKind::PatchAcf, app::StepStatus::Done);
+
+    // Step 3: Lock ACF (only if not switching to latest)
+    if is_latest {
+        // Don't lock — let Steam manage updates
+        if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game.app_id) {
+            entry.acf_locked = false;
         }
+    } else {
+        app.set_switch_step_status(&app::StepKind::LockAcf, app::StepStatus::InProgress);
         if let Err(e) = rewind_core::immutability::lock_file(&acf_path) {
-            eprintln!("Warning: failed to lock ACF: {}", e);
+            app.set_switch_step_status(
+                &app::StepKind::LockAcf,
+                app::StepStatus::Failed(e.to_string()),
+            );
+            app.switch_overlay_state.done = true;
+            return;
         }
-        entry.acf_locked = true;
+        app.set_switch_step_status(&app::StepKind::LockAcf, app::StepStatus::Done);
+        if let Some(entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game.app_id) {
+            entry.acf_locked = true;
+        }
     }
 
     let _ = config::save_games(&app.games_config);
+    app.switch_overlay_state.done = true;
 }
 
 fn step_kind_from_str(s: &str) -> Option<app::StepKind> {

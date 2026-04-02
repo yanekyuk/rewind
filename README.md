@@ -10,13 +10,13 @@
 ├─────────────────┬───────────────────────────────────┤
 │ GAMES           │  Crimson Desert                   │
 │                 │  App ID: 3321460                  │
-│ > Crimson Desert│  Status:  Downgraded              │
-│   Elden Ring    │  Active:  1.00 (manifest abc123)  │
-│   Dark Souls III│  Latest:  1.01 (manifest def456)  │
-│                 │  Cached:  1.00, 1.01              │
-│                 │                                   │
-│                 │  [D] Downgrade  [U] Upgrade       │
-│                 │  [L] Lock ACF   [O] Open SteamDB  │
+│ > Crimson Desert│  Status:    Updates disabled       │
+│   Elden Ring    │  Installed: manifest abc123        │
+│   Dark Souls III│  Spoofed as: manifest def456       │
+│                 │  Cached:    1.00, 1.01             │
+│                 │                                    │
+│                 │  [D] Download   [U] Switch version │
+│                 │  [O] Open SteamDB                  │
 ├─────────────────┴───────────────────────────────────┤
 │ [A] Add library  [S] Settings  [Q] Quit             │
 └─────────────────────────────────────────────────────┘
@@ -171,14 +171,20 @@ If you skip this step, `rewind` will still work but falls back to read-only file
 
 | Key | Action                          |
 |-----|---------------------------------|
-| `D` | Downgrade / pick cached version |
-| `U` | Upgrade to latest               |
-| `L` | Toggle ACF lock                 |
+| `D` | Download new version            |
+| `U` | Switch between cached versions  |
 | `O` | Open SteamDB page               |
-| `A` | Add Steam library               |
 | `S` | Settings                        |
-| `?` | Help                            |
 | `Q` | Quit                            |
+
+### Download Wizard
+
+| Key     | Action                          |
+|---------|---------------------------------|
+| `P`     | Open SteamDB patches page       |
+| `M`     | Open SteamDB manifests page     |
+| `Enter` | Download pasted manifest ID     |
+| `Esc`   | Cancel                          |
 
 ## Data Directory
 
