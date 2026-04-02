@@ -1,6 +1,7 @@
 use rewind_core::{
     config::{Config, GameEntry, GamesConfig},
     depot::DepotProgress,
+    reshade::ReshadeProgress,
     scanner::InstalledGame,
 };
 use std::collections::{HashMap, HashSet};
@@ -55,6 +56,7 @@ pub enum Screen {
     VersionPicker,
     SwitchOverlay,
     Settings,
+    ReshadeSetup,
 }
 
 #[derive(Debug, Default)]
@@ -106,6 +108,26 @@ pub struct SwitchOverlayState {
     pub lock_skipped: bool,
 }
 
+#[derive(Debug, Default, PartialEq)]
+pub enum ReshadeSetupStep {
+    #[default]
+    PickApi,
+    ConfirmShaders,
+    Downloading,
+}
+
+#[derive(Debug, Default)]
+pub struct ReshadeSetupState {
+    pub step: ReshadeSetupStep,
+    pub selected_api: usize,      // index into [Dxgi, D3d9, OpenGl32, Vulkan1]
+    pub download_shaders: bool,
+    pub lines: Vec<String>,       // streamed progress lines from background task
+    pub done: bool,
+    pub error: Option<String>,
+    /// Inline error shown in detail panel (enable/disable failures).
+    pub inline_error: Option<String>,
+}
+
 #[derive(Default)]
 pub struct ImageState {
     /// Cached resize protocols keyed by app_id (ready to render, no per-frame encoding).
@@ -153,6 +175,8 @@ pub struct App {
     pub pending_stdin_return: Option<mpsc::Receiver<tokio::process::ChildStdin>>,
     /// Tracks when the last DepotDownloader output was received (for timeout detection).
     pub last_depot_output: Option<std::time::Instant>,
+    pub reshade_state: ReshadeSetupState,
+    pub reshade_progress_rx: Option<mpsc::Receiver<ReshadeProgress>>,
     pub should_quit: bool,
 }
 
@@ -178,6 +202,8 @@ impl App {
             launch_options_cache: HashMap::new(),
             pending_stdin_return: None,
             last_depot_output: None,
+            reshade_state: ReshadeSetupState::default(),
+            reshade_progress_rx: None,
             should_quit: false,
         }
     }

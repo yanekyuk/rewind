@@ -47,5 +47,6 @@ pub fn draw(f: &mut Frame, app: &mut App) {
             main_screen::draw(f, app);
             switch_overlay::draw(f, app);
         }
+        Screen::ReshadeSetup => {},
     }
 }

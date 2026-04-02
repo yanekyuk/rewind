@@ -299,6 +299,7 @@ async fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
         Screen::VersionPicker => handle_version_picker(app, key),
         Screen::Settings => handle_settings(app, key),
         Screen::SwitchOverlay => handle_switch_overlay(app, key),
+        Screen::ReshadeSetup => {},
     }
 }
 
@@ -865,6 +866,7 @@ fn finalize_downgrade_with_steps(app: &mut App, dl: PendingDownload) {
             latest_buildid: latest_buildid.clone(),
             cached_manifest_ids: vec![dl.current_manifest_id.clone(), dl.manifest_id.clone()],
             acf_locked: true,
+            reshade: None,
         });
     }
 
