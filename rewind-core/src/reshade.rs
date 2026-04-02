@@ -118,36 +118,20 @@ pub fn disable_reshade(game_dir: &Path, api: &ReshadeApi) -> Result<(), ReshadeE
     Ok(())
 }
 
-/// Try to extract `ReShade64.dll` from an NSIS installer using the `7z` CLI tool.
-/// Returns `Ok(true)` on success, `Ok(false)` if `7z` is not installed, `Err` on I/O failure.
-fn try_extract_with_7z_cli(installer: &Path, out_dir: &Path) -> std::io::Result<bool> {
-    // On Windows, 7-Zip installs to a known path. On Unix, it's usually `7z` or `7zz` on PATH.
-    #[cfg(windows)]
-    let candidates: &[&str] = &[
-        r"C:\Program Files\7-Zip\7z.exe",
-        r"C:\Program Files (x86)\7-Zip\7z.exe",
-        "7z",
-    ];
-    #[cfg(not(windows))]
-    let candidates: &[&str] = &["7z", "7zz", "7za"];
+/// Extract `ReShade64.dll` from an NSIS installer using libarchive (compress-tools).
+/// libarchive has built-in NSIS support regardless of the compression type used.
+/// Only compiled on Unix — on other platforms the 7z stream fallback is used instead.
+#[cfg(unix)]
+fn extract_with_libarchive(installer: &Path, out_dir: &Path) -> Result<bool, ReshadeError> {
+    let file = std::fs::File::open(installer)?;
+    compress_tools::uncompress_archive(file, out_dir, compress_tools::Ownership::Ignore)
+        .map_err(|e| ReshadeError::SevenZ(e.to_string()))?;
+    Ok(true)
+}
 
-    for cmd in candidates {
-        let result = std::process::Command::new(cmd)
-            .args(["e", &installer.to_string_lossy(), "ReShade64.dll", "-y"])
-            .arg(format!("-o{}", out_dir.display()))
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-
-        match result {
-            Ok(status) if status.success() => return Ok(true),
-            Ok(_) => return Ok(false),  // 7z found but extraction failed
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(e),
-        }
-    }
-
-    Ok(false) // no 7z variant found on PATH
+#[cfg(not(unix))]
+fn extract_with_libarchive(_installer: &Path, _out_dir: &Path) -> Result<bool, ReshadeError> {
+    Ok(false) // not available; caller falls back to 7z stream scan
 }
 
 /// Download the official ReShade installer from reshade.me, extract `ReShade64.dll`
@@ -198,9 +182,9 @@ pub async fn download_reshade(
     }
     std::fs::create_dir_all(&tmp_extract)?;
 
-    // Try `7z` (p7zip) first — it understands NSIS installers regardless of compression type.
+    // libarchive (compress-tools) understands NSIS installers regardless of compression type.
     // Fall back to scanning for a 7z stream (works for older NSIS 7z-compressed builds).
-    let extracted = try_extract_with_7z_cli(&tmp_installer, &tmp_extract)
+    let extracted = extract_with_libarchive(&tmp_installer, &tmp_extract)
         .unwrap_or(false);
 
     if !extracted {
