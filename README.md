@@ -1,7 +1,7 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="rewind logo" width="120" /><br/>
-  <img src="assets/logo-text.svg" alt="rewind" /><br/>
-  <img src="assets/logo-tagline.svg" alt="Roll back. Play the old way." />
+  <img src="assets/logo.svg" alt="Rewind — pixelated gear icon with circular rewind arrow in Steam blue" width="120" /><br/>
+  <img src="assets/logo-text.svg" alt="REWIND" /><br/>
+  <img src="assets/logo-tagline.svg" alt="──────── Roll back. Play the old way. ────────" />
 </p>
 
 `rewind` is a cross-platform tool for managing Steam game version downgrades. It gives you a full-screen interactive TUI to browse your installed games, downgrade to any previous version, and switch between cached versions instantly — no re-downloading required.
