@@ -8,13 +8,34 @@ use ratatui::{
 use ratatui_image::StatefulImage;
 use rewind_core::steamdb;
 
-const ASCII_LOGO: &str = r#"
- ██████╗ ███████╗██╗    ██╗██╗███╗   ██╗██████╗
- ██╔══██╗██╔════╝██║    ██║██║████╗  ██║██╔══██╗
- ██████╔╝█████╗  ██║ █╗ ██║██║██╔██╗ ██║██║  ██║
- ██╔══██╗██╔══╝  ██║███╗██║██║██║╚██╗██║██║  ██║
- ██║  ██║███████╗╚███╔███╔╝██║██║ ╚████║██████╔╝
- ╚═╝  ╚═╝╚══════╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝╚═════╝"#;
+// Wide: 48+ columns inner width (6 lines tall)
+const LOGO_WIDE: &str = "\
+ ██████╗ ███████╗██╗    ██╗██╗███╗   ██╗██████╗\n\
+ ██╔══██╗██╔════╝██║    ██║██║████╗  ██║██╔══██╗\n\
+ ██████╔╝█████╗  ██║ █╗ ██║██║██╔██╗ ██║██║  ██║\n\
+ ██╔══██╗██╔══╝  ██║███╗██║██║██║╚██╗██║██║  ██║\n\
+ ██║  ██║███████╗╚███╔███╔╝██║██║ ╚████║██████╔╝\n\
+ ╚═╝  ╚═╝╚══════╝ ╚══╝╚══╝ ╚═╝╚═╝  ╚═══╝╚═════╝";
+
+// Medium: 28+ columns inner width (4 lines tall)
+const LOGO_MEDIUM: &str = "\
+ ╦═╗╔═╗╦ ╦╦╔╗╔╔╦╗\n\
+ ╠╦╝║╣ ║║║║║║║ ║║\n\
+ ╩╚═╚═╝╚╩╝╩╝╚╝═╩╝";
+
+// Small: plain text fallback
+const LOGO_SMALL: &str = "REWIND";
+
+/// Returns the appropriate logo text and height (including border) for the given width.
+fn logo_for_width(inner_width: u16) -> (&'static str, u16) {
+    if inner_width >= 48 {
+        (LOGO_WIDE, 8)   // 6 lines + 2 border
+    } else if inner_width >= 20 {
+        (LOGO_MEDIUM, 5)  // 3 lines + 2 border
+    } else {
+        (LOGO_SMALL, 3)   // 1 line + 2 border
+    }
+}
 
 pub fn draw(f: &mut Frame, app: &mut App) {
     let area = f.area();
@@ -33,10 +54,14 @@ pub fn draw(f: &mut Frame, app: &mut App) {
         .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
         .split(outer[0]);
 
+    // Determine logo height based on available width (minus 2 for border)
+    let logo_inner_width = content[0].width.saturating_sub(2);
+    let (_, logo_height) = logo_for_width(logo_inner_width);
+
     // Left column: ASCII logo on top, games list below
     let left = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(9), Constraint::Min(0)])
+        .constraints([Constraint::Length(logo_height), Constraint::Min(0)])
         .split(content[0]);
 
     draw_logo(f, left[0]);
@@ -60,7 +85,8 @@ fn draw_logo(f: &mut Frame, area: ratatui::layout::Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    let logo = Paragraph::new(ASCII_LOGO)
+    let (logo_text, _) = logo_for_width(inner.width);
+    let logo = Paragraph::new(logo_text)
         .style(theme::title())
         .alignment(Alignment::Center);
     f.render_widget(logo, inner);
