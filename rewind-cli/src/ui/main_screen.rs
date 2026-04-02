@@ -102,7 +102,6 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
 
     let status_line = match entry {
         Some(e) if e.active_manifest_id != e.latest_manifest_id => "▼ Updates disabled",
-        Some(e) if e.acf_locked => "✓ Updates disabled",
         Some(_) => "✓ Updates enabled",
         None => "  Updates enabled",
     };

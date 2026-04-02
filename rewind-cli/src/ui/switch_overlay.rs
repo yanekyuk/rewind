@@ -52,11 +52,7 @@ pub fn draw(f: &mut Frame, app: &App) {
         .map(|(kind, status)| {
             // Special handling for LockAcf when switching to latest (shown as skipped)
             let is_lock_skipped = matches!(kind, crate::app::StepKind::LockAcf)
-                && matches!(status, StepStatus::Done)
-                && app
-                    .selected_game_entry()
-                    .map(|e| e.active_manifest_id == e.latest_manifest_id)
-                    .unwrap_or(false);
+                && app.switch_overlay_state.lock_skipped;
 
             if is_lock_skipped {
                 let label = format!(" [\u{2014}] {} (skipped \u{2014} updates enabled)", kind.label());

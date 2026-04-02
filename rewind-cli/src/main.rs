@@ -421,6 +421,11 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
                 let _ = open::that(url);
             }
         }
+        KeyCode::Char('o') => {
+            if let Some(ref url) = app.wizard_state.error_url {
+                let _ = open::that(url.clone());
+            }
+        }
         KeyCode::Backspace => {
             if !app.wizard_state.is_downloading {
                 app.wizard_state.manifest_input.pop();
@@ -511,6 +516,7 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                     steps,
                     target_manifest: manifest_id.clone(),
                     done: false,
+                    lock_skipped: is_latest,
                 };
                 app.screen = Screen::SwitchOverlay;
 

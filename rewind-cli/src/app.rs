@@ -96,6 +96,8 @@ pub struct SwitchOverlayState {
     pub target_manifest: String,
     /// Whether the switch is complete (user can dismiss with Esc).
     pub done: bool,
+    /// Whether lock was skipped (switching to latest version).
+    pub lock_skipped: bool,
 }
 
 #[derive(Default)]
