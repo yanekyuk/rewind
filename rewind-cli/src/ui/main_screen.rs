@@ -183,6 +183,7 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
         .map(|ids| ids.join(", "))
         .unwrap_or_else(|| "none".into());
 
+
     let reshade_status = match entry.and_then(|e| e.reshade.as_ref()) {
         None => "  [R] Set up ReShade".to_string(),
         Some(r) if r.enabled => "  ReShade: enabled  [R] disable".to_string(),

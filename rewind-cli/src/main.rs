@@ -388,14 +388,9 @@ fn handle_main(app: &mut App, key: KeyCode) {
             let game_id = game.app_id;
             let entry = app.games_config.games.iter().find(|e| e.app_id == game_id);
 
-            // [R] requires a tracked game (GameEntry must exist in games_config)
-            if entry.is_none() {
-                return;
-            }
-
             match entry.and_then(|e| e.reshade.as_ref()) {
                 None => {
-                    // Tracked game, no ReShade yet — open setup wizard
+                    // Any installed game can use ReShade — open setup wizard
                     app.reshade_state = app::ReshadeSetupState::default();
                     app.screen = Screen::ReshadeSetup;
                 }
@@ -1078,6 +1073,20 @@ fn finalize_reshade(app: &mut App) {
 
     if let Some(game_entry) = app.games_config.games.iter_mut().find(|e| e.app_id == game.app_id) {
         game_entry.reshade = Some(entry);
+    } else {
+        // Game isn't tracked by rewind yet — create a minimal entry to hold ReShade config.
+        app.games_config.games.push(rewind_core::config::GameEntry {
+            name: game.name.clone(),
+            app_id: game.app_id,
+            depot_id: game.depot_id,
+            install_path: game.install_path.clone(),
+            active_manifest_id: game.manifest_id.clone(),
+            latest_manifest_id: game.manifest_id.clone(),
+            latest_buildid: String::new(),
+            cached_manifest_ids: vec![],
+            acf_locked: false,
+            reshade: Some(entry),
+        });
     }
 
     let _ = config::save_games(&app.games_config);
