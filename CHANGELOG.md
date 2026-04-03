@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.2] - 2026-04-03
+
+### Fixed
+- CI macOS builds now set `PKG_CONFIG_PATH` so the linker can find Homebrew's keg-only libarchive
+- Added CI workflow that runs builds on `hotfix/**`, `release/**` pushes and PRs targeting `main` or `next`
+
 ## [0.5.1] - 2026-04-03
 
 ### Fixed
