@@ -2,7 +2,7 @@ use rewind_core::{
     config::{Config, GameEntry, GamesConfig},
     depot::DepotProgress,
     reshade::ReshadeProgress,
-    scanner::InstalledGame,
+    scanner::{InstalledGame, SteamAccount},
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -85,6 +85,10 @@ pub struct SettingsState {
     pub username_input: String,
     pub library_input: String,
     pub focused_field: usize,
+    /// Accounts loaded from loginusers.vdf when Settings opens. Empty = file missing.
+    pub available_accounts: Vec<SteamAccount>,
+    /// 0 = Auto (no preference), 1..n = available_accounts[account_index - 1]
+    pub account_index: usize,
 }
 
 #[derive(Debug, Default)]
@@ -126,6 +130,20 @@ pub struct ReshadeSetupState {
     pub error: Option<String>,
     /// Inline error shown in detail panel (enable/disable failures).
     pub inline_error: Option<String>,
+}
+
+#[derive(Debug, Default, PartialEq)]
+pub enum FirstRunStep {
+    #[default]
+    Welcome,
+    AccountPicker,
+}
+
+#[derive(Debug, Default)]
+pub struct FirstRunState {
+    pub step: FirstRunStep,
+    pub accounts: Vec<SteamAccount>,
+    pub selected_index: usize,
 }
 
 #[derive(Default)]
@@ -178,6 +196,8 @@ pub struct App {
     pub reshade_state: ReshadeSetupState,
     pub reshade_progress_rx: Option<mpsc::Receiver<ReshadeProgress>>,
     pub should_quit: bool,
+    pub is_first_run: bool,
+    pub first_run_state: FirstRunState,
 }
 
 impl App {
@@ -205,6 +225,8 @@ impl App {
             reshade_state: ReshadeSetupState::default(),
             reshade_progress_rx: None,
             should_quit: false,
+            is_first_run: first_run,
+            first_run_state: FirstRunState::default(),
         }
     }
 
