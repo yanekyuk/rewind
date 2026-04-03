@@ -42,6 +42,10 @@ pub fn selected() -> Style {
     Style::default().fg(TEXT_PRIMARY).bg(SELECTED_BG)
 }
 
+pub fn list_item_selected() -> Style {
+    selected()
+}
+
 pub fn status_success() -> Style {
     Style::default().fg(SUCCESS)
 }

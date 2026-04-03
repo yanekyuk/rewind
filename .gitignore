@@ -12,6 +12,9 @@ Thumbs.db
 # Git worktrees
 .worktrees/
 
+# Local notes
+.notes/
+
 # Editor
 .idea/
 .vscode/

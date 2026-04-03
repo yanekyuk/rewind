@@ -41,9 +41,21 @@ Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `style:`
 
 All feature branches are based off `next` and merged back into `next`. Never merge directly to `main` during development.
 
+### PR Issue References
+
+- PRs targeting `next`: use `Implements #N` or `Part of #N` — do **not** use `closes`/`fixes`, as that would close the issue on merge to `next`
+- PRs targeting `main` (i.e. `release/*` or `hotfix/*`): use `Closes #N` — this is when the issue is actually resolved
+
 ## Implementation Workflow
 
 When implementing features or fixes, always use subagent-driven development within a git worktree for isolation. Base worktrees off `next`.
+
+### Worktree & Branch Naming (applies when using /using-git-worktrees)
+
+- **Branch names** follow conventional commit prefixes with a slash: `feat/something`, `fix/something`, `chore/something`
+- **Worktree folder names** replace the slash with a dash: `feat-something`, `fix-something`, `chore-something`
+  - This avoids nested subdirectories inside `.worktrees/`
+  - Example: branch `feat/multi-account` → worktree at `.worktrees/feat-multi-account`
 
 ## Before Finishing a Branch
 

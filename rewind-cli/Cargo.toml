@@ -1,6 +1,6 @@
 [package]
 name = "rewind-cli"
-version = "0.5.2"
+version = "0.6.0"
 edition = "2021"
 
 [[bin]]
@@ -16,3 +16,5 @@ open = "5"
 anyhow = "1"
 ratatui-image = "6"
 image = "0.25"
+steamlocate = "2"
+fuzzy-matcher = "0.3"

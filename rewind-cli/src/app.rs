@@ -1,8 +1,10 @@
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use rewind_core::{
     config::{Config, GameEntry, GamesConfig},
     depot::DepotProgress,
     reshade::ReshadeProgress,
-    scanner::InstalledGame,
+    scanner::{InstalledGame, SteamAccount},
 };
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -85,6 +87,10 @@ pub struct SettingsState {
     pub username_input: String,
     pub library_input: String,
     pub focused_field: usize,
+    /// Accounts loaded from loginusers.vdf when Settings opens. Empty = file missing.
+    pub available_accounts: Vec<SteamAccount>,
+    /// 0 = Auto (no preference), 1..n = available_accounts[account_index - 1]
+    pub account_index: usize,
 }
 
 #[derive(Debug, Default)]
@@ -126,6 +132,20 @@ pub struct ReshadeSetupState {
     pub error: Option<String>,
     /// Inline error shown in detail panel (enable/disable failures).
     pub inline_error: Option<String>,
+}
+
+#[derive(Debug, Default, PartialEq)]
+pub enum FirstRunStep {
+    #[default]
+    Welcome,
+    AccountPicker,
+}
+
+#[derive(Debug, Default)]
+pub struct FirstRunState {
+    pub step: FirstRunStep,
+    pub accounts: Vec<SteamAccount>,
+    pub selected_index: usize,
 }
 
 #[derive(Default)]
@@ -178,6 +198,10 @@ pub struct App {
     pub reshade_state: ReshadeSetupState,
     pub reshade_progress_rx: Option<mpsc::Receiver<ReshadeProgress>>,
     pub should_quit: bool,
+    pub is_first_run: bool,
+    pub first_run_state: FirstRunState,
+    pub filter_query: String,
+    pub filter_mode: bool,
 }
 
 impl App {
@@ -205,6 +229,10 @@ impl App {
             reshade_state: ReshadeSetupState::default(),
             reshade_progress_rx: None,
             should_quit: false,
+            is_first_run: first_run,
+            first_run_state: FirstRunState::default(),
+            filter_query: String::new(),
+            filter_mode: false,
         }
     }
 
@@ -221,7 +249,7 @@ impl App {
     }
 
     pub fn selected_game(&self) -> Option<&InstalledGame> {
-        self.installed_games.get(self.selected_game_index)
+        self.filtered_games().into_iter().nth(self.selected_game_index)
     }
 
     pub fn selected_game_entry(&self) -> Option<&GameEntry> {
@@ -240,8 +268,123 @@ impl App {
     }
 
     pub fn scroll_down(&mut self) {
-        if self.selected_game_index + 1 < self.installed_games.len() {
+        let count = self.filtered_games().len();
+        if self.selected_game_index + 1 < count {
             self.selected_game_index += 1;
         }
+    }
+
+    pub fn filtered_games(&self) -> Vec<&InstalledGame> {
+        if self.filter_query.is_empty() {
+            return self.installed_games.iter().collect();
+        }
+        let matcher = SkimMatcherV2::default().ignore_case();
+        self.installed_games
+            .iter()
+            .filter(|g| matcher.fuzzy_match(&g.name, &self.filter_query).is_some())
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rewind_core::{config::{Config, GamesConfig}, scanner::InstalledGame};
+    use std::path::PathBuf;
+
+    fn make_app(names: &[&str]) -> App {
+        let mut app = App::new(Config::default(), GamesConfig::default());
+        app.installed_games = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| InstalledGame {
+                app_id: i as u32,
+                name: name.to_string(),
+                depot_id: 0,
+                manifest_id: String::new(),
+                install_path: PathBuf::new(),
+                acf_path: PathBuf::new(),
+                state_flags: 0,
+            })
+            .collect();
+        app
+    }
+
+    #[test]
+    fn filtered_games_empty_query_returns_all() {
+        let app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        assert_eq!(app.filtered_games().len(), 3);
+    }
+
+    #[test]
+    fn filtered_games_fuzzy_match() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "cs2".to_string();
+        // "cs2" fuzzy-matches "Counter-Strike 2" (c, s, 2 appear in order)
+        assert_eq!(app.filtered_games().len(), 1);
+        assert_eq!(app.filtered_games()[0].name, "Counter-Strike 2");
+    }
+
+    #[test]
+    fn filtered_games_case_insensitive() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2"]);
+        app.filter_query = "HALF".to_string();
+        assert_eq!(app.filtered_games().len(), 1);
+        assert_eq!(app.filtered_games()[0].name, "Half-Life 2");
+    }
+
+    #[test]
+    fn filtered_games_no_match_returns_empty() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2"]);
+        app.filter_query = "zzzzz".to_string();
+        assert_eq!(app.filtered_games().len(), 0);
+    }
+
+    #[test]
+    fn selected_game_respects_filter() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "portal".to_string();
+        app.selected_game_index = 0;
+        assert_eq!(app.selected_game().map(|g| g.name.as_str()), Some("Portal"));
+    }
+
+    #[test]
+    fn selected_game_out_of_bounds_after_filter_returns_none() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "portal".to_string();
+        app.selected_game_index = 1; // only 1 result, index 1 is out of bounds
+        assert!(app.selected_game().is_none());
+    }
+
+    #[test]
+    fn scroll_down_bounded_by_filtered_count() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "portal".to_string(); // 1 result
+        app.selected_game_index = 0;
+        app.scroll_down(); // should not move — only 1 result
+        assert_eq!(app.selected_game_index, 0);
+    }
+
+    #[test]
+    fn filter_query_cleared_preserves_full_list_index() {
+        // Simulates what Esc does: translate filtered index to full-list index
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "portal".to_string();
+        app.selected_game_index = 0; // "Portal" is at filtered index 0
+
+        // Translate to full-list index (the Esc logic)
+        if let Some(game) = app.selected_game() {
+            let app_id = game.app_id;
+            app.selected_game_index = app.installed_games
+                .iter()
+                .position(|g| g.app_id == app_id)
+                .unwrap_or(0);
+        }
+        app.filter_query.clear();
+        app.filter_mode = false;
+
+        // Portal is at index 2 in the full list
+        assert_eq!(app.selected_game_index, 2);
+        assert_eq!(app.selected_game().map(|g| g.name.as_str()), Some("Portal"));
     }
 }

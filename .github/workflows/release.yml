@@ -133,6 +133,9 @@ jobs:
     name: Update README Download Links
     needs: release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -148,12 +151,21 @@ jobs:
           sed -i "s#| macOS (Intel) | .*#| macOS (Intel) | [\`rewind-x86_64-macos.tar.gz\`](${BASE_URL}/rewind-x86_64-macos.tar.gz) |#" README.md
           sed -i "s#| Linux (64-bit) | .*#| Linux (64-bit) | [\`rewind-x86_64-linux.tar.gz\`](${BASE_URL}/rewind-x86_64-linux.tar.gz) |#" README.md
 
-      - name: Commit and push
+      - name: Open PR with updated links
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          git diff --quiet README.md && exit 0
+          BRANCH="chore/readme-links-${TAG}"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git diff --quiet README.md || {
-            git add README.md
-            git commit -m "docs: update download links for ${GITHUB_REF#refs/tags/}"
-            git push origin main
-          }
+          git checkout -b "${BRANCH}"
+          git add README.md
+          git commit -m "docs: update download links for ${TAG}"
+          git push origin "${BRANCH}"
+          gh pr create \
+            --title "docs: update download links for ${TAG}" \
+            --body "Automated update of README download links after release ${TAG}." \
+            --base main \
+            --head "${BRANCH}"

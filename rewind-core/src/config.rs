@@ -20,6 +20,8 @@ pub struct Config {
     pub steam_username: Option<String>,
     #[serde(default)]
     pub libraries: Vec<Library>,
+    #[serde(default)]
+    pub preferred_steam_account: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -150,11 +152,20 @@ mod tests {
             libraries: vec![Library {
                 path: "/tmp/steamapps".into(),
             }],
+            preferred_steam_account: Some(76561198858787719u64),
         };
         let toml_str = toml::to_string_pretty(&config).unwrap();
         let parsed: Config = toml::from_str(&toml_str).unwrap();
         assert_eq!(parsed.steam_username.as_deref(), Some("testuser"));
         assert_eq!(parsed.libraries.len(), 1);
+        assert_eq!(parsed.preferred_steam_account, Some(76561198858787719u64));
+    }
+
+    #[test]
+    fn config_without_preferred_account_defaults_to_none() {
+        let toml_str = r#"steam_username = "user""#;
+        let parsed: Config = toml::from_str(toml_str).unwrap();
+        assert!(parsed.preferred_steam_account.is_none());
     }
 
     #[test]
@@ -193,6 +204,7 @@ mod tests {
         let config = Config {
             steam_username: Some("user1".into()),
             libraries: vec![],
+            preferred_steam_account: None,
         };
         let path = tmp.path().join("config.toml");
         let content = toml::to_string_pretty(&config).unwrap();

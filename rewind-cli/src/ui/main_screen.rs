@@ -67,11 +67,12 @@ pub fn draw(f: &mut Frame, app: &mut App) {
     draw_game_list(f, app, left[1]);
     draw_detail_panel(f, app, content[1]);
 
-    // Status bar
-    let status = Paragraph::new(
-        " [↑↓/jk] navigate  [D] download  [U] switch version  [R] reshade  [O] SteamDB  [S] settings  [Q] quit ",
-    )
-    .style(theme::help_bar());
+    let status_text = if app.filter_mode {
+        " [↑↓] navigate  [Esc] clear filter  [<type>] search "
+    } else {
+        " [↑↓/jk] navigate  [D] download  [U] switch version  [R] reshade  [O] SteamDB  [S] settings  [Q] quit "
+    };
+    let status = Paragraph::new(status_text).style(theme::help_bar());
     f.render_widget(status, outer[1]);
 }
 
@@ -92,8 +93,40 @@ fn draw_logo(f: &mut Frame, area: ratatui::layout::Rect) {
 }
 
 fn draw_game_list(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
-    let items: Vec<ListItem> = app
-        .installed_games
+    let show_filter = app.filter_mode || !app.filter_query.is_empty();
+
+    let block = Block::default()
+        .title(" GAMES ")
+        .borders(Borders::ALL)
+        .border_type(BorderType::Plain)
+        .border_style(theme::border());
+
+    let inner = block.inner(area);
+    f.render_widget(block, area);
+
+    let (filter_area, list_area) = if show_filter {
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(1), Constraint::Min(0)])
+            .split(inner);
+        (Some(chunks[0]), chunks[1])
+    } else {
+        (None, inner)
+    };
+
+    if let Some(fa) = filter_area {
+        let cursor = if app.filter_mode { "▌" } else { "" };
+        let text = format!("/ {}{}", app.filter_query, cursor);
+        let style = if app.filter_mode {
+            theme::text()
+        } else {
+            theme::text_secondary()
+        };
+        f.render_widget(Paragraph::new(text).style(style), fa);
+    }
+
+    let filtered = app.filtered_games();
+    let items: Vec<ListItem> = filtered
         .iter()
         .enumerate()
         .map(|(i, game)| {
@@ -103,25 +136,17 @@ fn draw_game_list(f: &mut Frame, app: &App, area: ratatui::layout::Rect) {
                 Some(_) => "✓ ",
                 None => "  ",
             };
-
             let style = if i == app.selected_game_index {
                 theme::selected()
             } else {
                 theme::text()
             };
-
             ListItem::new(format!("{}{}", indicator, game.name)).style(style)
         })
         .collect();
 
-    let block = Block::default()
-        .title(" GAMES ")
-        .borders(Borders::ALL)
-        .border_type(BorderType::Plain)
-        .border_style(theme::border());
-
-    let list = List::new(items).block(block);
-    f.render_widget(list, area);
+    let list = List::new(items);
+    f.render_widget(list, list_area);
 }
 
 fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) {
@@ -153,7 +178,7 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
 
     // Populate launch options cache on first access for this appid.
     if !app.launch_options_cache.contains_key(&game_app_id) {
-        let opts = rewind_core::scanner::find_launch_options(game_app_id);
+        let opts = rewind_core::scanner::find_launch_options(game_app_id, app.config.preferred_steam_account);
         app.launch_options_cache.insert(game_app_id, opts);
     }
 
