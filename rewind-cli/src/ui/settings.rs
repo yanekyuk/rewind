@@ -65,7 +65,8 @@ pub fn draw(f: &mut Frame, app: &App) {
     f.render_widget(library_para, sections[2]);
 
     // Steam Account selector
-    let account_focused = app.settings_state.focused_field == 2;
+    let account_focused = app.settings_state.focused_field == 2
+        && !app.settings_state.available_accounts.is_empty();
     let account_label = if app.settings_state.available_accounts.is_empty() {
         "Auto (most recent)".to_string()
     } else if app.settings_state.account_index == 0 {

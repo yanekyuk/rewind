@@ -774,10 +774,7 @@ fn handle_settings(app: &mut App, key: KeyCode) {
             let _ = config::save_config(&app.config);
 
             if app.is_first_run && app.config.preferred_steam_account.is_none() {
-                use steamlocate::SteamDir;
-                let accounts = SteamDir::locate().ok()
-                    .map(|sd| rewind_core::scanner::read_steam_accounts(sd.path()))
-                    .unwrap_or_default();
+                let accounts = std::mem::take(&mut app.settings_state.available_accounts);
                 if accounts.len() >= 2 {
                     app.first_run_state = app::FirstRunState {
                         step: app::FirstRunStep::AccountPicker,
