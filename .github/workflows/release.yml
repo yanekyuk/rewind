@@ -55,10 +55,12 @@ jobs:
           BREW_PREFIX="$(brew --prefix libarchive)"
           if [[ "${{ matrix.target }}" == "x86_64-apple-darwin" ]]; then
             # Cross-compiling to x86_64 on Apple Silicon: Homebrew only installs
-            # arm64 bottles. macOS ships a universal libarchive, so create a .pc
-            # file that uses Homebrew headers but links the system's universal lib.
+            # arm64 bottles. macOS ships a universal libarchive, so strip the
+            # arm64-specific -L path from Homebrew's .pc so the linker falls back
+            # to the system's universal libarchive.
             mkdir -p "$RUNNER_TEMP/pkgconfig"
-            printf 'Name: libarchive\nDescription: Multi-format archive library\nVersion: 3\nLibs: -larchive\nCflags: -I%s/include\n' "$BREW_PREFIX" \
+            sed 's|-L[^ ]*libarchive/lib[^ ]* ||g' \
+              "${BREW_PREFIX}/lib/pkgconfig/libarchive.pc" \
               > "$RUNNER_TEMP/pkgconfig/libarchive.pc"
             echo "PKG_CONFIG_PATH=$RUNNER_TEMP/pkgconfig" >> "$GITHUB_ENV"
             echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
