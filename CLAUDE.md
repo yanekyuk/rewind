@@ -50,6 +50,13 @@ All feature branches are based off `next` and merged back into `next`. Never mer
 
 When implementing features or fixes, always use subagent-driven development within a git worktree for isolation. Base worktrees off `next`.
 
+### Worktree & Branch Naming (applies when using /using-git-worktrees)
+
+- **Branch names** follow conventional commit prefixes with a slash: `feat/something`, `fix/something`, `chore/something`
+- **Worktree folder names** replace the slash with a dash: `feat-something`, `fix-something`, `chore-something`
+  - This avoids nested subdirectories inside `.worktrees/`
+  - Example: branch `feat/multi-account` → worktree at `.worktrees/feat-multi-account`
+
 ## Before Finishing a Branch
 
 Before merging or creating a PR (targeting `next`), always:
