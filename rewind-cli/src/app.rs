@@ -178,6 +178,8 @@ pub struct App {
     pub reshade_state: ReshadeSetupState,
     pub reshade_progress_rx: Option<mpsc::Receiver<ReshadeProgress>>,
     pub should_quit: bool,
+    pub filter_query: String,
+    pub filter_mode: bool,
 }
 
 impl App {
@@ -205,6 +207,8 @@ impl App {
             reshade_state: ReshadeSetupState::default(),
             reshade_progress_rx: None,
             should_quit: false,
+            filter_query: String::new(),
+            filter_mode: false,
         }
     }
 
