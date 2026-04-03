@@ -7,6 +7,29 @@ use rewind_core::{config, scanner};
 use std::time::Duration;
 use tokio::sync::mpsc;
 
+fn current_account_index(accounts: &[rewind_core::scanner::SteamAccount], preferred: Option<u64>) -> usize {
+    match preferred {
+        None => 0,
+        Some(id) => accounts.iter().position(|a| a.id == id).map(|i| i + 1).unwrap_or(0),
+    }
+}
+
+fn open_settings(app: &mut App) {
+    use steamlocate::SteamDir;
+    let available_accounts = SteamDir::locate().ok()
+        .map(|sd| rewind_core::scanner::read_steam_accounts(sd.path()))
+        .unwrap_or_default();
+    let account_index = current_account_index(&available_accounts, app.config.preferred_steam_account);
+    app.settings_state = app::SettingsState {
+        username_input: app.config.steam_username.clone().unwrap_or_default(),
+        library_input: String::new(),
+        focused_field: 0,
+        available_accounts,
+        account_index,
+    };
+    app.screen = Screen::Settings;
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cfg = config::load_config().unwrap_or_default();
@@ -331,14 +354,32 @@ async fn handle_key(app: &mut App, key: KeyCode, modifiers: KeyModifiers) {
 }
 
 fn handle_first_run(app: &mut App, key: KeyCode) {
-    match key {
-        KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
-        KeyCode::Enter => {
-            app.settings_state.username_input =
-                app.config.steam_username.clone().unwrap_or_default();
-            app.screen = Screen::Settings;
-        }
-        _ => {}
+    match app.first_run_state.step {
+        app::FirstRunStep::Welcome => match key {
+            KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
+            KeyCode::Enter => open_settings(app),
+            _ => {}
+        },
+        app::FirstRunStep::AccountPicker => match key {
+            KeyCode::Up | KeyCode::Char('k') => {
+                if app.first_run_state.selected_index > 0 {
+                    app.first_run_state.selected_index -= 1;
+                }
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                if app.first_run_state.selected_index + 1 < app.first_run_state.accounts.len() {
+                    app.first_run_state.selected_index += 1;
+                }
+            }
+            KeyCode::Enter => {
+                let selected = app.first_run_state.accounts[app.first_run_state.selected_index].clone();
+                app.config.preferred_steam_account = Some(selected.id);
+                let _ = config::save_config(&app.config);
+                app.is_first_run = false;
+                app.screen = Screen::Main;
+            }
+            _ => {}
+        },
     }
 }
 
@@ -371,11 +412,7 @@ fn handle_main(app: &mut App, key: KeyCode) {
             }
         }
         KeyCode::Char('s') => {
-            app.settings_state.username_input =
-                app.config.steam_username.clone().unwrap_or_default();
-            app.settings_state.library_input.clear();
-            app.settings_state.focused_field = 0;
-            app.screen = Screen::Settings;
+            open_settings(app);
         }
         KeyCode::Char('o') => {
             if let Some(game) = app.selected_game() {
@@ -723,25 +760,70 @@ fn start_reshade_download(app: &mut App) {
 fn handle_settings(app: &mut App, key: KeyCode) {
     match key {
         KeyCode::Esc => {
+            // Save username
             app.config.steam_username =
                 Some(app.settings_state.username_input.clone()).filter(|s| !s.is_empty());
+            // Save account preference
+            app.config.preferred_steam_account = if app.settings_state.account_index == 0 {
+                None
+            } else {
+                app.settings_state.available_accounts
+                    .get(app.settings_state.account_index - 1)
+                    .map(|a| a.id)
+            };
             let _ = config::save_config(&app.config);
+
+            if app.is_first_run && app.config.preferred_steam_account.is_none() {
+                use steamlocate::SteamDir;
+                let accounts = SteamDir::locate().ok()
+                    .map(|sd| rewind_core::scanner::read_steam_accounts(sd.path()))
+                    .unwrap_or_default();
+                if accounts.len() >= 2 {
+                    app.first_run_state = app::FirstRunState {
+                        step: app::FirstRunStep::AccountPicker,
+                        accounts,
+                        selected_index: 0,
+                    };
+                    app.screen = Screen::FirstRun;
+                    return;
+                } else if let Some(only) = accounts.into_iter().next() {
+                    app.config.preferred_steam_account = Some(only.id);
+                    let _ = config::save_config(&app.config);
+                }
+            }
+            app.is_first_run = false;
             app.screen = Screen::Main;
         }
+        KeyCode::Left => {
+            if app.settings_state.focused_field == 2
+                && !app.settings_state.available_accounts.is_empty()
+            {
+                let n = app.settings_state.available_accounts.len() + 1;
+                app.settings_state.account_index =
+                    (app.settings_state.account_index + n - 1) % n;
+            }
+        }
+        KeyCode::Right => {
+            if app.settings_state.focused_field == 2
+                && !app.settings_state.available_accounts.is_empty()
+            {
+                let n = app.settings_state.available_accounts.len() + 1;
+                app.settings_state.account_index =
+                    (app.settings_state.account_index + 1) % n;
+            }
+        }
         KeyCode::Backspace => match app.settings_state.focused_field {
-            0 => {
-                app.settings_state.username_input.pop();
-            }
-            _ => {
-                app.settings_state.library_input.pop();
-            }
+            0 => { app.settings_state.username_input.pop(); }
+            1 => { app.settings_state.library_input.pop(); }
+            _ => {}
         },
         KeyCode::Char(c) => match app.settings_state.focused_field {
             0 => app.settings_state.username_input.push(c),
-            _ => app.settings_state.library_input.push(c),
+            1 => app.settings_state.library_input.push(c),
+            _ => {}
         },
         KeyCode::Tab => {
-            app.settings_state.focused_field = (app.settings_state.focused_field + 1) % 2;
+            app.settings_state.focused_field = (app.settings_state.focused_field + 1) % 3;
         }
         KeyCode::Enter => match app.settings_state.focused_field {
             0 => {
@@ -749,18 +831,12 @@ fn handle_settings(app: &mut App, key: KeyCode) {
                     Some(app.settings_state.username_input.clone()).filter(|s| !s.is_empty());
                 let _ = config::save_config(&app.config);
             }
-            _ => {
-                let path =
-                    std::path::PathBuf::from(app.settings_state.library_input.trim());
-                if path.exists()
-                    && !app.config.libraries.iter().any(|l| l.path == path)
-                {
-                    app.config
-                        .libraries
-                        .push(rewind_core::config::Library { path });
+            1 => {
+                let path = std::path::PathBuf::from(app.settings_state.library_input.trim());
+                if path.exists() && !app.config.libraries.iter().any(|l| l.path == path) {
+                    app.config.libraries.push(rewind_core::config::Library { path });
                     let _ = config::save_config(&app.config);
                     app.settings_state.library_input.clear();
-                    // Rescan
                     app.installed_games.clear();
                     for lib in &app.config.libraries.clone() {
                         let steamapps = lib.path.join("steamapps");
@@ -772,6 +848,7 @@ fn handle_settings(app: &mut App, key: KeyCode) {
                     }
                 }
             }
+            _ => {}
         },
         _ => {}
     }
