@@ -50,11 +50,23 @@ jobs:
 
       - name: Install libarchive (macOS)
         if: runner.os == 'macOS'
-        run: brew install libarchive
+        run: |
+          brew install libarchive
+          BREW_PREFIX="$(brew --prefix libarchive)"
+          if [[ "${{ matrix.target }}" == "x86_64-apple-darwin" ]]; then
+            # Cross-compiling to x86_64 on Apple Silicon: Homebrew only installs
+            # arm64 bottles. macOS ships a universal libarchive, so create a .pc
+            # file that uses Homebrew headers but links the system's universal lib.
+            mkdir -p "$RUNNER_TEMP/pkgconfig"
+            printf 'Name: libarchive\nDescription: Multi-format archive library\nVersion: 3\nLibs: -larchive\nCflags: -I%s/include\n' "$BREW_PREFIX" \
+              > "$RUNNER_TEMP/pkgconfig/libarchive.pc"
+            echo "PKG_CONFIG_PATH=$RUNNER_TEMP/pkgconfig" >> "$GITHUB_ENV"
+            echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
+          else
+            echo "PKG_CONFIG_PATH=${BREW_PREFIX}/lib/pkgconfig" >> "$GITHUB_ENV"
+          fi
 
       - name: Build release binary
-        env:
-          PKG_CONFIG_PATH: /opt/homebrew/opt/libarchive/lib/pkgconfig:/usr/local/opt/libarchive/lib/pkgconfig
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (tar.gz)
