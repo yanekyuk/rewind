@@ -67,10 +67,6 @@ fn parse_loginusers_vdf(content: &str) -> Vec<SteamAccount> {
                     current_account.take(),
                 ) {
                     accounts.push(SteamAccount { id, persona_name: persona, account_name: account });
-                } else {
-                    current_id = None;
-                    current_persona = None;
-                    current_account = None;
                 }
             }
             depth -= 1;
@@ -109,6 +105,16 @@ fn parse_loginusers_vdf(content: &str) -> Vec<SteamAccount> {
     }
 
     accounts
+}
+
+const STEAM_ID64_BASE: u64 = 76561197960265728;
+
+/// Convert a SteamID64 to its userdata directory path under `<steam_root>/userdata/<32-bit-id>/`.
+/// Returns `None` if the directory does not exist or the ID is below the base constant.
+pub fn userdata_dir_for_account(steam_root: &Path, steam_id64: u64) -> Option<PathBuf> {
+    let account_id = u32::try_from(steam_id64.checked_sub(STEAM_ID64_BASE)?).ok()?;
+    let dir = steam_root.join("userdata").join(account_id.to_string());
+    if dir.is_dir() { Some(dir) } else { None }
 }
 
 /// Scan one Steam library directory (the steamapps folder) and return all installed games.
@@ -327,10 +333,30 @@ fn extract_quoted_only(s: &str) -> Option<&str> {
     }
 }
 
-/// Read launch options for a game from the most recently modified localconfig.vdf
-/// found under `steam_root/userdata/*/config/localconfig.vdf`.
-/// Returns `None` if not found, Steam root has no userdata, or options are empty.
-pub fn read_launch_options(steam_root: &Path, app_id: u32) -> Option<String> {
+/// Read launch options for a game. If `preferred_account` is `Some(id)`, targets that
+/// account's `localconfig.vdf` first. Falls back to the most-recently-modified heuristic
+/// if the preferred account's directory doesn't exist or the app isn't listed there.
+pub fn read_launch_options(
+    steam_root: &Path,
+    app_id: u32,
+    preferred_account: Option<u64>,
+) -> Option<String> {
+    // Try preferred account's directory first.
+    if let Some(id) = preferred_account {
+        if let Some(account_dir) = userdata_dir_for_account(steam_root, id) {
+            let vdf_path = account_dir.join("config").join("localconfig.vdf");
+            if let Ok(content) = std::fs::read_to_string(&vdf_path) {
+                if let Some(opts) = extract_launch_options_from_vdf(&content, app_id) {
+                    return Some(opts);
+                }
+            }
+        }
+    }
+    // Fall back to most-recently-modified heuristic.
+    read_launch_options_heuristic(steam_root, app_id)
+}
+
+fn read_launch_options_heuristic(steam_root: &Path, app_id: u32) -> Option<String> {
     let userdata = steam_root.join("userdata");
     let entries = std::fs::read_dir(&userdata).ok()?;
 
@@ -355,10 +381,10 @@ pub fn read_launch_options(steam_root: &Path, app_id: u32) -> Option<String> {
 
 /// Convenience wrapper: resolves Steam root via steamlocate, then calls `read_launch_options`.
 /// Returns `None` if Steam is not found or the game has no launch options set.
-pub fn find_launch_options(app_id: u32) -> Option<String> {
+pub fn find_launch_options(app_id: u32, preferred_account: Option<u64>) -> Option<String> {
     use steamlocate::SteamDir;
     let steam_dir = SteamDir::locate().ok()?;
-    read_launch_options(steam_dir.path(), app_id)
+    read_launch_options(steam_dir.path(), app_id, preferred_account)
 }
 
 fn extract_launch_options_from_vdf(content: &str, app_id: u32) -> Option<String> {
@@ -661,7 +687,7 @@ mod tests {
         fs::write(user_dir.join("localconfig.vdf"), vdf_content).unwrap();
 
         assert_eq!(
-            read_launch_options(tmp.path(), 42),
+            read_launch_options(tmp.path(), 42, None),
             Some("DXVK_ASYNC=1 %command%".to_string())
         );
     }
@@ -669,7 +695,7 @@ mod tests {
     #[test]
     fn read_launch_options_returns_none_when_no_userdata() {
         let tmp = TempDir::new().unwrap();
-        assert_eq!(read_launch_options(tmp.path(), 42), None);
+        assert_eq!(read_launch_options(tmp.path(), 42, None), None);
     }
 
     #[test]
@@ -699,7 +725,7 @@ mod tests {
 }"#;
         fs::write(user_dir.join("localconfig.vdf"), vdf_content).unwrap();
 
-        assert_eq!(read_launch_options(tmp.path(), 42), None);
+        assert_eq!(read_launch_options(tmp.path(), 42, None), None);
     }
 
     #[test]
@@ -721,5 +747,97 @@ mod tests {
     fn read_steam_accounts_returns_empty_when_file_missing() {
         let tmp = TempDir::new().unwrap();
         assert!(read_steam_accounts(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn userdata_dir_for_account_returns_path_when_exists() {
+        let tmp = TempDir::new().unwrap();
+        // SteamID64 76561197960265729 → account ID = 76561197960265729 - 76561197960265728 = 1
+        let account_dir = tmp.path().join("userdata").join("1");
+        fs::create_dir_all(&account_dir).unwrap();
+        let result = userdata_dir_for_account(tmp.path(), 76561197960265729u64);
+        assert_eq!(result, Some(account_dir));
+    }
+
+    #[test]
+    fn userdata_dir_for_account_returns_none_when_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("userdata")).unwrap();
+        let result = userdata_dir_for_account(tmp.path(), 76561197960265729u64);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn userdata_dir_for_account_returns_none_on_underflow() {
+        let tmp = TempDir::new().unwrap();
+        let result = userdata_dir_for_account(tmp.path(), 0u64);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn read_launch_options_uses_preferred_account() {
+        let tmp = TempDir::new().unwrap();
+
+        // Account ID 2 (SteamID64 76561197960265730): no launch options for app 42
+        let acct2_cfg = tmp.path().join("userdata").join("2").join("config");
+        fs::create_dir_all(&acct2_cfg).unwrap();
+        let vdf_without = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "42"
+                    {
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        fs::write(acct2_cfg.join("localconfig.vdf"), vdf_without).unwrap();
+
+        // Small delay to ensure account 1 is written more recently
+        std::thread::sleep(std::time::Duration::from_millis(10));
+
+        // Account ID 1 (SteamID64 76561197960265729): has launch options for app 42
+        let acct1_cfg = tmp.path().join("userdata").join("1").join("config");
+        fs::create_dir_all(&acct1_cfg).unwrap();
+        let vdf_with = r#""UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "42"
+                    {
+                        "LaunchOptions"		"-preferred"
+                    }
+                }
+            }
+        }
+    }
+}"#;
+        fs::write(acct1_cfg.join("localconfig.vdf"), vdf_with).unwrap();
+
+        // Preferred = account 1 → should find "-preferred"
+        assert_eq!(
+            read_launch_options(tmp.path(), 42, Some(76561197960265729u64)),
+            Some("-preferred".to_string())
+        );
+
+        // No preference → heuristic; account 1 was written last so it's picked
+        assert_eq!(
+            read_launch_options(tmp.path(), 42, None),
+            Some("-preferred".to_string())
+        );
     }
 }
