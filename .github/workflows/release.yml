@@ -53,6 +53,8 @@ jobs:
         run: brew install libarchive
 
       - name: Build release binary
+        env:
+          PKG_CONFIG_PATH: /opt/homebrew/opt/libarchive/lib/pkgconfig:/usr/local/opt/libarchive/lib/pkgconfig
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Package (tar.gz)
