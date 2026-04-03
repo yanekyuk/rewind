@@ -36,6 +36,8 @@
 - **Instant version switching** — cached versions switch via symlink repoint, no download needed
 - **Delta caching** — only stores files that differ between manifests, not entire game copies
 - **ACF patching & locking** — patches `appmanifest_*.acf` and locks it to prevent Steam auto-updates
+- **Multiple Steam accounts** — detects all accounts on the machine; pick your preferred account during first run or change it in Settings; launch options load for the correct account automatically
+- **Game search / filter** — press `/` to fuzzy-search your library by name in real time
 - **Launch options display** — shows configured Steam launch options in the game detail panel
 - **ReShade integration** — download ReShade automatically and enable it per-game via symlinks; on Linux, the required `WINEDLLOVERRIDES` launch command is shown for copy-pasting into Steam
 - **Auto DepotDownloader setup** — downloads and manages the DepotDownloader binary for you

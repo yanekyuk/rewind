@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.0] - 2026-04-03
+
+### Added
+- **Game search / filter** — press `/` on the main screen to fuzzy-search your library by name; `Esc` clears the filter and restores your selection
+- **Multiple Steam account support** — rewind now detects all accounts on the machine; pick your preferred account during first run or change it any time in Settings; launch options are loaded for the correct account automatically
+
 ## [0.5.2] - 2026-04-03
 
 ### Fixed
