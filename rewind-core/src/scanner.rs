@@ -112,7 +112,7 @@ const STEAM_ID64_BASE: u64 = 76561197960265728;
 /// Convert a SteamID64 to its userdata directory path under `<steam_root>/userdata/<32-bit-id>/`.
 /// Returns `None` if the directory does not exist or the ID is below the base constant.
 pub fn userdata_dir_for_account(steam_root: &Path, steam_id64: u64) -> Option<PathBuf> {
-    let account_id = steam_id64.checked_sub(STEAM_ID64_BASE)?;
+    let account_id = u32::try_from(steam_id64.checked_sub(STEAM_ID64_BASE)?).ok()?;
     let dir = steam_root.join("userdata").join(account_id.to_string());
     if dir.is_dir() { Some(dir) } else { None }
 }
