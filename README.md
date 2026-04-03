@@ -191,6 +191,7 @@ If you skip this step, `rewind` will still work but falls back to read-only file
 | `R`         | ReShade setup / toggle          |
 | `O`         | Open SteamDB page               |
 | `S`         | Settings                        |
+| `/`         | Filter games (type to search, `Esc` to clear) |
 | `Q` / `Esc` | Quit                            |
 
 ### Download Wizard

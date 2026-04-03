@@ -346,9 +346,18 @@ fn handle_main(app: &mut App, key: KeyCode) {
     if app.filter_mode {
         match key {
             KeyCode::Esc => {
+                // Translate filtered selection back to full-list position
+                if let Some(game) = app.selected_game() {
+                    let app_id = game.app_id;
+                    app.selected_game_index = app.installed_games
+                        .iter()
+                        .position(|g| g.app_id == app_id)
+                        .unwrap_or(0);
+                } else {
+                    app.selected_game_index = 0;
+                }
                 app.filter_query.clear();
                 app.filter_mode = false;
-                app.selected_game_index = 0;
             }
             KeyCode::Up => app.scroll_up(),
             KeyCode::Down => app.scroll_down(),

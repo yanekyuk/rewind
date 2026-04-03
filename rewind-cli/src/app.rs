@@ -342,4 +342,27 @@ mod tests {
         app.scroll_down(); // should not move — only 1 result
         assert_eq!(app.selected_game_index, 0);
     }
+
+    #[test]
+    fn filter_query_cleared_preserves_full_list_index() {
+        // Simulates what Esc does: translate filtered index to full-list index
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "portal".to_string();
+        app.selected_game_index = 0; // "Portal" is at filtered index 0
+
+        // Translate to full-list index (the Esc logic)
+        if let Some(game) = app.selected_game() {
+            let app_id = game.app_id;
+            app.selected_game_index = app.installed_games
+                .iter()
+                .position(|g| g.app_id == app_id)
+                .unwrap_or(0);
+        }
+        app.filter_query.clear();
+        app.filter_mode = false;
+
+        // Portal is at index 2 in the full list
+        assert_eq!(app.selected_game_index, 2);
+        assert_eq!(app.selected_game().map(|g| g.name.as_str()), Some("Portal"));
+    }
 }
