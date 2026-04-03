@@ -41,6 +41,11 @@ Conventional commits: `feat:`, `fix:`, `chore:`, `docs:`, `style:`
 
 All feature branches are based off `next` and merged back into `next`. Never merge directly to `main` during development.
 
+### PR Issue References
+
+- PRs targeting `next`: use `Implements #N` or `Part of #N` — do **not** use `closes`/`fixes`, as that would close the issue on merge to `next`
+- PRs targeting `main` (i.e. `release/*` or `hotfix/*`): use `Closes #N` — this is when the issue is actually resolved
+
 ## Implementation Workflow
 
 When implementing features or fixes, always use subagent-driven development within a git worktree for isolation. Base worktrees off `next`.
