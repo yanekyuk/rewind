@@ -105,10 +105,10 @@ Go to the [Releases](https://github.com/yanekyuk/rewind/releases) page and downl
 
 | Platform | File |
 |----------|------|
-| Windows (64-bit) | [`rewind-x86_64-windows.zip`](https://github.com/yanekyuk/rewind/releases/download/v0.4.2/rewind-x86_64-windows.zip) |
-| macOS (Apple Silicon) | [`rewind-aarch64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.2/rewind-aarch64-macos.tar.gz) |
-| macOS (Intel) | [`rewind-x86_64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.2/rewind-x86_64-macos.tar.gz) |
-| Linux (64-bit) | [`rewind-x86_64-linux.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.4.2/rewind-x86_64-linux.tar.gz) |
+| Windows (64-bit) | [`rewind-x86_64-windows.zip`](https://github.com/yanekyuk/rewind/releases/download/v0.5.0/rewind-x86_64-windows.zip) |
+| macOS (Apple Silicon) | [`rewind-aarch64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.5.0/rewind-aarch64-macos.tar.gz) |
+| macOS (Intel) | [`rewind-x86_64-macos.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.5.0/rewind-x86_64-macos.tar.gz) |
+| Linux (64-bit) | [`rewind-x86_64-linux.tar.gz`](https://github.com/yanekyuk/rewind/releases/download/v0.5.0/rewind-x86_64-linux.tar.gz) |
 
 `rewind` is a terminal application — it always needs to be launched from a terminal window. It cannot be opened by double-clicking.
 

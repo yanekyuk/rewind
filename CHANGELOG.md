@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.5.1] - 2026-04-03
+
+### Fixed
+- CI release builds now install `libarchive` on Linux and macOS before compiling, fixing failed binary builds for v0.5.0
+
 ## [0.5.0] - 2026-04-02
 
 ### Added

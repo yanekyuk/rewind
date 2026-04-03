@@ -44,6 +44,14 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Install libarchive (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y libarchive-dev
+
+      - name: Install libarchive (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libarchive
+
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
 
