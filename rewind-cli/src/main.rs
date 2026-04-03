@@ -384,10 +384,44 @@ fn handle_first_run(app: &mut App, key: KeyCode) {
 }
 
 fn handle_main(app: &mut App, key: KeyCode) {
+    if app.filter_mode {
+        match key {
+            KeyCode::Esc => {
+                // Translate filtered selection back to full-list position
+                if let Some(game) = app.selected_game() {
+                    let app_id = game.app_id;
+                    app.selected_game_index = app.installed_games
+                        .iter()
+                        .position(|g| g.app_id == app_id)
+                        .unwrap_or(0);
+                } else {
+                    app.selected_game_index = 0;
+                }
+                app.filter_query.clear();
+                app.filter_mode = false;
+            }
+            KeyCode::Up => app.scroll_up(),
+            KeyCode::Down => app.scroll_down(),
+            KeyCode::Backspace => {
+                app.filter_query.pop();
+                app.selected_game_index = 0;
+            }
+            KeyCode::Char(c) => {
+                app.filter_query.push(c);
+                app.selected_game_index = 0;
+            }
+            _ => {}
+        }
+        return;
+    }
+
     match key {
         KeyCode::Char('q') | KeyCode::Esc => app.should_quit = true,
         KeyCode::Up | KeyCode::Char('k') => app.scroll_up(),
         KeyCode::Down | KeyCode::Char('j') => app.scroll_down(),
+        KeyCode::Char('/') => {
+            app.filter_mode = true;
+        }
         KeyCode::Char('d') => {
             if let Some(g) = app.selected_game() {
                 let steam_running = rewind_core::steam_guard::is_steam_running();
@@ -427,12 +461,10 @@ fn handle_main(app: &mut App, key: KeyCode) {
 
             match entry.and_then(|e| e.reshade.as_ref()) {
                 None => {
-                    // Any installed game can use ReShade — open setup wizard
                     app.reshade_state = app::ReshadeSetupState::default();
                     app.screen = Screen::ReshadeSetup;
                 }
                 Some(r) if r.enabled => {
-                    // Disable: remove symlinks
                     let api = r.api.clone();
                     match rewind_core::reshade::disable_reshade(&game.install_path, &api) {
                         Ok(()) => {
@@ -450,7 +482,6 @@ fn handle_main(app: &mut App, key: KeyCode) {
                     }
                 }
                 Some(r) => {
-                    // Enable: re-create symlinks
                     let api = r.api.clone();
                     let shaders_enabled = r.shaders_enabled;
                     let Ok(bin_dir) = config::bin_dir() else { return };
