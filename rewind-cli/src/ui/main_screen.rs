@@ -153,7 +153,7 @@ fn draw_detail_panel(f: &mut Frame, app: &mut App, area: ratatui::layout::Rect) 
 
     // Populate launch options cache on first access for this appid.
     if !app.launch_options_cache.contains_key(&game_app_id) {
-        let opts = rewind_core::scanner::find_launch_options(game_app_id);
+        let opts = rewind_core::scanner::find_launch_options(game_app_id, app.config.preferred_steam_account);
         app.launch_options_cache.insert(game_app_id, opts);
     }
 

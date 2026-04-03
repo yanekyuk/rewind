@@ -380,6 +380,7 @@ fn read_launch_options_heuristic(steam_root: &Path, app_id: u32) -> Option<Strin
 }
 
 /// Convenience wrapper: resolves Steam root via steamlocate, then calls `read_launch_options`.
+/// Returns `None` if Steam is not found or the game has no launch options set.
 pub fn find_launch_options(app_id: u32, preferred_account: Option<u64>) -> Option<String> {
     use steamlocate::SteamDir;
     let steam_dir = SteamDir::locate().ok()?;
