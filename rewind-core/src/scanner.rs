@@ -23,6 +23,94 @@ pub struct InstalledGame {
     pub state_flags: u32,
 }
 
+/// A Steam account found in loginusers.vdf.
+#[derive(Debug, Clone)]
+pub struct SteamAccount {
+    pub id: u64,               // SteamID64
+    pub persona_name: String,  // Display name (e.g. "yanekeke")
+    pub account_name: String,  // Login name (e.g. "yanekyuk")
+}
+
+/// Read all Steam accounts from `<steam_root>/config/loginusers.vdf`.
+/// Returns an empty Vec if the file is missing or unparseable.
+pub fn read_steam_accounts(steam_root: &Path) -> Vec<SteamAccount> {
+    let path = steam_root.join("config").join("loginusers.vdf");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+    parse_loginusers_vdf(&content)
+}
+
+fn parse_loginusers_vdf(content: &str) -> Vec<SteamAccount> {
+    let mut accounts = Vec::new();
+    let mut current_id: Option<u64> = None;
+    let mut current_persona: Option<String> = None;
+    let mut current_account: Option<String> = None;
+    let mut depth = 0i32;
+    let mut in_users = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+
+        if trimmed == "{" {
+            depth += 1;
+            continue;
+        }
+
+        if trimmed == "}" {
+            // Closing a user entry block (depth 2 → 1)
+            if depth == 2 && in_users {
+                if let (Some(id), Some(persona), Some(account)) = (
+                    current_id.take(),
+                    current_persona.take(),
+                    current_account.take(),
+                ) {
+                    accounts.push(SteamAccount { id, persona_name: persona, account_name: account });
+                } else {
+                    current_id = None;
+                    current_persona = None;
+                    current_account = None;
+                }
+            }
+            depth -= 1;
+            continue;
+        }
+
+        if depth == 0 && trimmed == "\"users\"" {
+            in_users = true;
+            continue;
+        }
+
+        // SteamID64 key at depth 1 inside "users"
+        if in_users && depth == 1 {
+            if let Some(id_str) = extract_quoted_only(trimmed) {
+                if let Ok(id) = id_str.parse::<u64>() {
+                    current_id = Some(id);
+                }
+            }
+            continue;
+        }
+
+        // Fields inside a user block at depth 2
+        if in_users && depth == 2 {
+            if trimmed.starts_with("\"AccountName\"") {
+                let rest = trimmed["\"AccountName\"".len()..].trim();
+                if let Some(val) = extract_quoted_only(rest) {
+                    current_account = Some(val.to_string());
+                }
+            } else if trimmed.starts_with("\"PersonaName\"") {
+                let rest = trimmed["\"PersonaName\"".len()..].trim();
+                if let Some(val) = extract_quoted_only(rest) {
+                    current_persona = Some(val.to_string());
+                }
+            }
+        }
+    }
+
+    accounts
+}
+
 /// Scan one Steam library directory (the steamapps folder) and return all installed games.
 pub fn scan_library(steamapps_dir: &Path) -> Result<Vec<InstalledGame>, ScannerError> {
     let mut games = Vec::new();
@@ -612,5 +700,26 @@ mod tests {
         fs::write(user_dir.join("localconfig.vdf"), vdf_content).unwrap();
 
         assert_eq!(read_launch_options(tmp.path(), 42), None);
+    }
+
+    #[test]
+    fn read_steam_accounts_parses_loginusers_vdf() {
+        let tmp = TempDir::new().unwrap();
+        let config_dir = tmp.path().join("config");
+        fs::create_dir_all(&config_dir).unwrap();
+        let vdf = "\"users\"\n{\n\t\"76561198858787719\"\n\t{\n\t\t\"AccountName\"\t\t\"yanekyuk\"\n\t\t\"PersonaName\"\t\t\"yanekeke\"\n\t}\n\t\"76561199258820835\"\n\t{\n\t\t\"AccountName\"\t\t\"chwantt\"\n\t\t\"PersonaName\"\t\t\"chwantt\"\n\t}\n}";
+        fs::write(config_dir.join("loginusers.vdf"), vdf).unwrap();
+        let accounts = read_steam_accounts(tmp.path());
+        assert_eq!(accounts.len(), 2);
+        assert_eq!(accounts[0].id, 76561198858787719u64);
+        assert_eq!(accounts[0].account_name, "yanekyuk");
+        assert_eq!(accounts[0].persona_name, "yanekeke");
+        assert_eq!(accounts[1].id, 76561199258820835u64);
+    }
+
+    #[test]
+    fn read_steam_accounts_returns_empty_when_file_missing() {
+        let tmp = TempDir::new().unwrap();
+        assert!(read_steam_accounts(tmp.path()).is_empty());
     }
 }
