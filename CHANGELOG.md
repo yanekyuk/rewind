@@ -3,29 +3,23 @@
 ## [0.5.2] - 2026-04-03
 
 ### Fixed
-- CI macOS builds now set `PKG_CONFIG_PATH` so the linker can find Homebrew's keg-only libarchive
-- Added CI workflow that runs builds on `hotfix/**`, `release/**` pushes and PRs targeting `main` or `next`
-
-## [0.5.1] - 2026-04-03
-
-### Fixed
-- CI release builds now install `libarchive` on Linux and macOS before compiling, fixing failed binary builds for v0.5.0
+- Missing Linux and macOS binaries for v0.5.0 and v0.5.1 are now available — if you couldn't download those releases before, grab v0.5.2 instead
 
 ## [0.5.0] - 2026-04-02
 
 ### Added
-- **ReShade integration** — download, install, enable, and disable ReShade for any installed game via the new `ReshadeSetup` overlay (`R` keybind from the main screen)
-- **ReShade shader support** — automatically fetches shaders from the reshade-shaders slim branch
-- **Steam process detection** — warns before download/switch operations when Steam is running to prevent conflicts
-- **Launch options display** — shows configured Steam launch options in the game detail panel
+- **ReShade integration** — install, enable, and disable ReShade post-processing for any game right from rewind; press `R` on the main screen to get started
+- **ReShade shader support** — a curated set of shaders is fetched automatically so you can start experimenting immediately
+- **Steam conflict detection** — rewind now warns you if Steam is open before starting a download or version switch, preventing save and config conflicts
+- **Launch options display** — your per-game Steam launch options are shown in the game detail panel so you always know what flags are active
 
 ### Fixed
-- NSIS installer extraction on Linux now uses `libarchive` (compress-tools) — no external tools required
-- ReShade can be applied to any installed game, not only rewind-tracked ones
-- Launch option parsing correctly handles escaped quotes
-- Missing `app_id` in `set_launch_options` is now detected and reported correctly
+- ReShade installation on Linux no longer requires any extra tools — everything is handled internally
+- ReShade can now be applied to any installed game, not just ones you've previously downgraded with rewind
+- Launch options containing quoted arguments are now parsed correctly
+- rewind now shows a clear error message when it can't find a game to configure, instead of doing nothing
 
 ### Changed
-- Replaced automatic `localconfig.vdf` writes with a manual launch command prompt to avoid conflicts with a running Steam client
+- Setting launch options no longer writes to your Steam config automatically; instead, rewind shows you the exact command to run — this avoids conflicts when Steam is already open
 
 ## [0.4.0] - initial release
