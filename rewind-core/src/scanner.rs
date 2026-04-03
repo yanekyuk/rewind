@@ -107,6 +107,16 @@ fn parse_loginusers_vdf(content: &str) -> Vec<SteamAccount> {
     accounts
 }
 
+const STEAM_ID64_BASE: u64 = 76561197960265728;
+
+/// Convert a SteamID64 to its userdata directory path under `<steam_root>/userdata/<32-bit-id>/`.
+/// Returns `None` if the directory does not exist or the ID is below the base constant.
+pub fn userdata_dir_for_account(steam_root: &Path, steam_id64: u64) -> Option<PathBuf> {
+    let account_id = steam_id64.checked_sub(STEAM_ID64_BASE)?;
+    let dir = steam_root.join("userdata").join(account_id.to_string());
+    if dir.is_dir() { Some(dir) } else { None }
+}
+
 /// Scan one Steam library directory (the steamapps folder) and return all installed games.
 pub fn scan_library(steamapps_dir: &Path) -> Result<Vec<InstalledGame>, ScannerError> {
     let mut games = Vec::new();
@@ -717,5 +727,30 @@ mod tests {
     fn read_steam_accounts_returns_empty_when_file_missing() {
         let tmp = TempDir::new().unwrap();
         assert!(read_steam_accounts(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn userdata_dir_for_account_returns_path_when_exists() {
+        let tmp = TempDir::new().unwrap();
+        // SteamID64 76561197960265729 → account ID = 76561197960265729 - 76561197960265728 = 1
+        let account_dir = tmp.path().join("userdata").join("1");
+        fs::create_dir_all(&account_dir).unwrap();
+        let result = userdata_dir_for_account(tmp.path(), 76561197960265729u64);
+        assert_eq!(result, Some(account_dir));
+    }
+
+    #[test]
+    fn userdata_dir_for_account_returns_none_when_missing() {
+        let tmp = TempDir::new().unwrap();
+        fs::create_dir_all(tmp.path().join("userdata")).unwrap();
+        let result = userdata_dir_for_account(tmp.path(), 76561197960265729u64);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn userdata_dir_for_account_returns_none_on_underflow() {
+        let tmp = TempDir::new().unwrap();
+        let result = userdata_dir_for_account(tmp.path(), 0u64);
+        assert!(result.is_none());
     }
 }
