@@ -67,10 +67,6 @@ fn parse_loginusers_vdf(content: &str) -> Vec<SteamAccount> {
                     current_account.take(),
                 ) {
                     accounts.push(SteamAccount { id, persona_name: persona, account_name: account });
-                } else {
-                    current_id = None;
-                    current_persona = None;
-                    current_account = None;
                 }
             }
             depth -= 1;
