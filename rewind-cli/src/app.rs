@@ -1,3 +1,5 @@
+use fuzzy_matcher::skim::SkimMatcherV2;
+use fuzzy_matcher::FuzzyMatcher;
 use rewind_core::{
     config::{Config, GameEntry, GamesConfig},
     depot::DepotProgress,
@@ -247,5 +249,71 @@ impl App {
         if self.selected_game_index + 1 < self.installed_games.len() {
             self.selected_game_index += 1;
         }
+    }
+
+    pub fn filtered_games(&self) -> Vec<&InstalledGame> {
+        if self.filter_query.is_empty() {
+            return self.installed_games.iter().collect();
+        }
+        let matcher = SkimMatcherV2::default().ignore_case();
+        self.installed_games
+            .iter()
+            .filter(|g| matcher.fuzzy_match(&g.name, &self.filter_query).is_some())
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rewind_core::{config::{Config, GamesConfig}, scanner::InstalledGame};
+    use std::path::PathBuf;
+
+    fn make_app(names: &[&str]) -> App {
+        let mut app = App::new(Config::default(), GamesConfig::default());
+        app.installed_games = names
+            .iter()
+            .enumerate()
+            .map(|(i, name)| InstalledGame {
+                app_id: i as u32,
+                name: name.to_string(),
+                depot_id: 0,
+                manifest_id: String::new(),
+                install_path: PathBuf::new(),
+                acf_path: PathBuf::new(),
+                state_flags: 0,
+            })
+            .collect();
+        app
+    }
+
+    #[test]
+    fn filtered_games_empty_query_returns_all() {
+        let app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        assert_eq!(app.filtered_games().len(), 3);
+    }
+
+    #[test]
+    fn filtered_games_fuzzy_match() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "cs2".to_string();
+        // "cs2" fuzzy-matches "Counter-Strike 2" (c, s, 2 appear in order)
+        assert_eq!(app.filtered_games().len(), 1);
+        assert_eq!(app.filtered_games()[0].name, "Counter-Strike 2");
+    }
+
+    #[test]
+    fn filtered_games_case_insensitive() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2"]);
+        app.filter_query = "HALF".to_string();
+        assert_eq!(app.filtered_games().len(), 1);
+        assert_eq!(app.filtered_games()[0].name, "Half-Life 2");
+    }
+
+    #[test]
+    fn filtered_games_no_match_returns_empty() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2"]);
+        app.filter_query = "zzzzz".to_string();
+        assert_eq!(app.filtered_games().len(), 0);
     }
 }
