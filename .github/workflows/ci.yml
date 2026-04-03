@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - 'release/**'
+      - 'hotfix/**'
+  pull_request:
+    branches:
+      - main
+      - next
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - name: windows-x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macos-x86_64
+            runner: macos-latest
+            target: x86_64-apple-darwin
+          - name: macos-aarch64
+            runner: macos-latest
+            target: aarch64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install libarchive (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y libarchive-dev
+
+      - name: Install libarchive (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install libarchive
+          BREW_PREFIX="$(brew --prefix libarchive)"
+          if [[ "${{ matrix.target }}" == "x86_64-apple-darwin" ]]; then
+            # Cross-compiling to x86_64 on Apple Silicon: Homebrew bottles are
+            # arm64-only, so the linker rejects them for x86_64. macOS ships a
+            # universal libarchive; create a .pc file with Homebrew headers but
+            # no -L path so the linker finds the system's universal library.
+            BREW_VERSION="$(PKG_CONFIG_PATH=${BREW_PREFIX}/lib/pkgconfig pkg-config --modversion libarchive)"
+            mkdir -p "$RUNNER_TEMP/pkgconfig"
+            printf 'Name: libarchive\nDescription: Multi-format archive library\nVersion: %s\nLibs: -larchive\nCflags: -I%s/include\n' \
+              "$BREW_VERSION" "$BREW_PREFIX" > "$RUNNER_TEMP/pkgconfig/libarchive.pc"
+            echo "PKG_CONFIG_PATH=$RUNNER_TEMP/pkgconfig" >> "$GITHUB_ENV"
+            echo "PKG_CONFIG_ALLOW_CROSS=1" >> "$GITHUB_ENV"
+          else
+            echo "PKG_CONFIG_PATH=${BREW_PREFIX}/lib/pkgconfig" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Test
+        if: runner.os == 'Linux'
+        run: cargo test
