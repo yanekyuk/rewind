@@ -227,7 +227,7 @@ impl App {
     }
 
     pub fn selected_game(&self) -> Option<&InstalledGame> {
-        self.installed_games.get(self.selected_game_index)
+        self.filtered_games().into_iter().nth(self.selected_game_index)
     }
 
     pub fn selected_game_entry(&self) -> Option<&GameEntry> {
@@ -246,7 +246,8 @@ impl App {
     }
 
     pub fn scroll_down(&mut self) {
-        if self.selected_game_index + 1 < self.installed_games.len() {
+        let count = self.filtered_games().len();
+        if self.selected_game_index + 1 < count {
             self.selected_game_index += 1;
         }
     }
@@ -315,5 +316,30 @@ mod tests {
         let mut app = make_app(&["Counter-Strike 2", "Half-Life 2"]);
         app.filter_query = "zzzzz".to_string();
         assert_eq!(app.filtered_games().len(), 0);
+    }
+
+    #[test]
+    fn selected_game_respects_filter() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "portal".to_string();
+        app.selected_game_index = 0;
+        assert_eq!(app.selected_game().map(|g| g.name.as_str()), Some("Portal"));
+    }
+
+    #[test]
+    fn selected_game_out_of_bounds_after_filter_returns_none() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "portal".to_string();
+        app.selected_game_index = 1; // only 1 result, index 1 is out of bounds
+        assert!(app.selected_game().is_none());
+    }
+
+    #[test]
+    fn scroll_down_bounded_by_filtered_count() {
+        let mut app = make_app(&["Counter-Strike 2", "Half-Life 2", "Portal"]);
+        app.filter_query = "portal".to_string(); // 1 result
+        app.selected_game_index = 0;
+        app.scroll_down(); // should not move — only 1 result
+        assert_eq!(app.selected_game_index, 0);
     }
 }
