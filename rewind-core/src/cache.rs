@@ -133,6 +133,42 @@ pub fn list_cached_manifests(cache_root: &Path, app_id: u32, depot_id: u32) -> V
         .unwrap_or_default()
 }
 
+#[derive(Debug, Clone)]
+pub struct ManifestEntry {
+    pub name: String,
+    pub sha1: String,
+    pub size_bytes: u64,
+}
+
+/// Parse a DepotDownloader manifest txt file (produced by `-manifest-only`) into entries.
+/// Skips the header block. Data rows are whitespace-split: [size, chunks, sha1, flags, name]
+pub fn parse_manifest_txt(path: &Path) -> Result<Vec<ManifestEntry>, CacheError> {
+    let content = std::fs::read_to_string(path)?;
+    let mut entries = Vec::new();
+    let mut in_data = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("Size") && trimmed.contains("Chunks") && trimmed.contains("File SHA") {
+            in_data = true;
+            continue;
+        }
+        if !in_data || trimmed.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 5 {
+            continue;
+        }
+        let size_bytes: u64 = parts[0].parse().unwrap_or(0);
+        let sha1 = parts[2].to_string();
+        let name = parts[4..].join(" ");
+        entries.push(ManifestEntry { name, sha1, size_bytes });
+    }
+
+    Ok(entries)
+}
+
 #[cfg(unix)]
 fn create_symlink(target: &Path, link: &Path) -> Result<(), CacheError> {
     std::os::unix::fs::symlink(target, link)?;
@@ -251,5 +287,52 @@ mod tests {
         assert_eq!(manifests.len(), 2);
         assert!(manifests.contains(&"v1".to_string()));
         assert!(manifests.contains(&"v2".to_string()));
+    }
+
+    #[test]
+    fn parse_manifest_txt_parses_entries() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.txt");
+        fs::write(&path,
+            "Content Manifest for Depot 3321461\n\
+             \n\
+             Manifest ID / date     : 123 / 01/01/2024 00:00:00\n\
+             Total number of files  : 2\n\
+             Total number of chunks : 5\n\
+             Total bytes on disk    : 1000\n\
+             Total bytes compressed : 800\n\
+             \n\
+             \n\
+                       Size Chunks File SHA                                 Flags Name\n\
+                    100      1 aabbccdd00112233445566778899001122334455     0 dir/file.pak\n\
+                    200      2 ffeeddccbbaa99887766554433221100ffeeddcc     0 other.bin\n"
+        ).unwrap();
+
+        let entries = parse_manifest_txt(&path).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "dir/file.pak");
+        assert_eq!(entries[0].sha1, "aabbccdd00112233445566778899001122334455");
+        assert_eq!(entries[0].size_bytes, 100);
+        assert_eq!(entries[1].name, "other.bin");
+        assert_eq!(entries[1].sha1, "ffeeddccbbaa99887766554433221100ffeeddcc");
+        assert_eq!(entries[1].size_bytes, 200);
+    }
+
+    #[test]
+    fn parse_manifest_txt_empty_file_returns_empty() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.txt");
+        fs::write(&path, "").unwrap();
+        let entries = parse_manifest_txt(&path).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_manifest_txt_header_only_returns_empty() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.txt");
+        fs::write(&path, "Content Manifest for Depot 123\n\nManifest ID: 456\n").unwrap();
+        let entries = parse_manifest_txt(&path).unwrap();
+        assert!(entries.is_empty());
     }
 }
