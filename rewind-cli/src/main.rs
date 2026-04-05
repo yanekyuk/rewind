@@ -1005,6 +1005,12 @@ fn start_download(app: &mut App) {
         acf_path: game.acf_path.clone(),
     });
 
+    let dl_app_id = game.app_id;
+    let dl_depot_id = game.depot_id;
+    let dl_manifest_id = app.pending_download.as_ref().map(|d| d.manifest_id.clone()).unwrap_or_default();
+    let dl_username = username.clone();
+    let dl_cache_dir = cache_dir.clone();
+
     let tx2 = tx.clone();
     tokio::spawn(async move {
         if !rewind_core::depot::check_dotnet().await {
@@ -1046,8 +1052,50 @@ fn start_download(app: &mut App) {
                 "__STEP_START:DownloadManifest".into(),
             ))
             .await;
+
+        // Phase 1: run manifest-only to get per-file SHA1s without downloading
+        if let Err(e) = rewind_core::depot::run_manifest_only(
+            &binary,
+            dl_app_id,
+            dl_depot_id,
+            &dl_manifest_id,
+            &dl_username,
+            &dl_cache_dir,
+        )
+        .await
+        {
+            let _ = tx2
+                .send(rewind_core::depot::DepotProgress::Error(e.to_string()))
+                .await;
+            return;
+        }
+
+        // Parse manifest txt and determine which files are missing from the object store
+        let manifest_txt = dl_cache_dir
+            .join(format!("manifest_{}_{}.txt", dl_depot_id, dl_manifest_id));
+        let entries = rewind_core::cache::parse_manifest_txt(&manifest_txt).unwrap_or_default();
+        let depot_dir = dl_cache_dir
+            .parent()
+            .expect("manifest cache dir has parent depot dir")
+            .to_path_buf();
+        let missing = rewind_core::cache::missing_entries(&depot_dir, &entries);
+
+        let filelist_path = if missing.is_empty() {
+            None
+        } else {
+            let path = dl_cache_dir.join(".filelist");
+            let content = missing.iter().map(|e| e.name.as_str()).collect::<Vec<_>>().join("\n");
+            if let Err(e) = std::fs::write(&path, content) {
+                let _ = tx2
+                    .send(rewind_core::depot::DepotProgress::Error(e.to_string()))
+                    .await;
+                return;
+            }
+            Some(path)
+        };
+
         let _ = tx2
-            .send(rewind_core::depot::DepotProgress::ReadyToDownload { binary, filelist_path: None })
+            .send(rewind_core::depot::DepotProgress::ReadyToDownload { binary, filelist_path })
             .await;
     });
 }
