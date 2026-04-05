@@ -70,6 +70,7 @@ pub fn apply_downloaded(
 /// Only repoints files that exist in new_cache_dir.
 pub fn repoint_symlinks(game_dir: &Path, new_cache_dir: &Path) -> Result<(), CacheError> {
     for entry in WalkDir::new(new_cache_dir)
+        .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
@@ -126,6 +127,7 @@ pub fn list_cached_manifests(cache_root: &Path, app_id: u32, depot_id: u32) -> V
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().is_dir())
                 .filter_map(|e| e.file_name().into_string().ok())
+                .filter(|name| name != ".objects")
                 .collect();
             manifests.sort();
             manifests
@@ -531,5 +533,47 @@ mod tests {
         link_object(tmp.path(), "v2hash", &manifest_dir, "file.pak").unwrap();
 
         assert_eq!(fs::read(manifest_dir.join("file.pak")).unwrap(), b"v2 content");
+    }
+
+    #[test]
+    fn list_cached_manifests_excludes_objects_dir() {
+        let tmp = TempDir::new().unwrap();
+        let cache_root = tmp.path();
+        let dir1 = manifest_cache_dir(cache_root, 1234, 5678, "v1");
+        fs::create_dir_all(&dir1).unwrap();
+        let objects = cache_root.join("1234/5678/.objects");
+        fs::create_dir_all(&objects).unwrap();
+
+        let manifests = list_cached_manifests(cache_root, 1234, 5678);
+        assert_eq!(manifests, vec!["v1".to_string()]);
+        assert!(!manifests.contains(&".objects".to_string()));
+    }
+
+    #[test]
+    fn repoint_symlinks_follows_symlinks_into_objects() {
+        let tmp = TempDir::new().unwrap();
+        // Set up object store
+        let depot_dir = tmp.path().join("cache/1/2");
+        let objects = depot_dir.join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("sha_v2"), b"v2 content").unwrap();
+
+        // Manifest dir where file is a symlink to .objects
+        let manifest_dir = depot_dir.join("v2");
+        fs::create_dir_all(&manifest_dir).unwrap();
+        let obj_abs = fs::canonicalize(objects.join("sha_v2")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&obj_abs, manifest_dir.join("main.pak")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&obj_abs, manifest_dir.join("main.pak")).unwrap();
+
+        // Game dir with an old file
+        let game_dir = tmp.path().join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        fs::write(game_dir.join("main.pak"), b"old content").unwrap();
+
+        repoint_symlinks(&game_dir, &manifest_dir).unwrap();
+
+        assert_eq!(fs::read(game_dir.join("main.pak")).unwrap(), b"v2 content");
     }
 }
