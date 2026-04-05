@@ -1298,6 +1298,12 @@ fn finalize_downgrade_with_steps(app: &mut App, dl: PendingDownload) {
     let manifest_txt = target_cache
         .join(format!("manifest_{}_{}.txt", dl.depot_id, dl.manifest_id));
     let entries = rewind_core::cache::parse_manifest_txt(&manifest_txt).unwrap_or_default();
+    if entries.is_empty() {
+        app.set_step_status(&StepKind::BackupFiles, StepStatus::Failed("Manifest file is empty or missing".into()));
+        app.wizard_state.error = Some("Manifest file could not be read — cannot apply downgrade".to_string());
+        app.wizard_state.is_downloading = false;
+        return;
+    }
 
     // Step 4: Backup current game files → current_cache (real file copies)
     app.set_step_status(&StepKind::BackupFiles, StepStatus::InProgress);
