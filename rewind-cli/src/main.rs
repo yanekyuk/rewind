@@ -137,8 +137,14 @@ async fn run(
                         app.last_depot_output = Some(std::time::Instant::now());
                     }
                 }
-                rewind_core::depot::DepotProgress::ReadyToDownload { binary } => {
-                    if let Some(ref dl) = app.pending_download {
+                rewind_core::depot::DepotProgress::ReadyToDownload { binary, filelist_path } => {
+                    if filelist_path.is_none() {
+                        // All files already in object store — skip download, finalize directly
+                        app.set_step_status(&StepKind::DownloadManifest, StepStatus::Done);
+                        if let Some(dl) = app.pending_download.take() {
+                            finalize_downgrade_with_steps(&mut app, dl);
+                        }
+                    } else if let Some(ref dl) = app.pending_download {
                         let (tx_d, rx_d) = mpsc::channel(64);
                         app.progress_rx = Some(rx_d);
 
@@ -149,6 +155,7 @@ async fn run(
                             &dl.manifest_id,
                             &dl.username,
                             &dl.cache_dir,
+                            filelist_path.as_deref(),
                             tx_d,
                         )
                         .await
@@ -1040,7 +1047,7 @@ fn start_download(app: &mut App) {
             ))
             .await;
         let _ = tx2
-            .send(rewind_core::depot::DepotProgress::ReadyToDownload { binary })
+            .send(rewind_core::depot::DepotProgress::ReadyToDownload { binary, filelist_path: None })
             .await;
     });
 }
