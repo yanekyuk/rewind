@@ -169,6 +169,21 @@ pub fn parse_manifest_txt(path: &Path) -> Result<Vec<ManifestEntry>, CacheError>
     Ok(entries)
 }
 
+/// Move `src` into `depot_dir/.objects/<sha1>`.
+/// If the object already exists, the source file is removed (discard the duplicate).
+/// Returns the object path.
+pub fn intern_object(depot_dir: &Path, src: &Path, sha1: &str) -> Result<PathBuf, CacheError> {
+    let objects_dir = depot_dir.join(".objects");
+    std::fs::create_dir_all(&objects_dir)?;
+    let dest = objects_dir.join(sha1);
+    if dest.try_exists().unwrap_or(false) {
+        std::fs::remove_file(src)?;
+    } else {
+        std::fs::rename(src, &dest)?;
+    }
+    Ok(dest)
+}
+
 /// Returns entries whose SHA1 is not present in `depot_dir/.objects/<sha1>`.
 pub fn missing_entries<'a>(
     depot_dir: &Path,
@@ -401,5 +416,45 @@ mod tests {
         let missing = missing_entries(tmp.path(), &entries);
         assert_eq!(missing.len(), 1);
         assert_eq!(missing[0].sha1, "bbbb");
+    }
+
+    #[test]
+    fn intern_object_moves_file_to_objects() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("file.pak");
+        fs::write(&src, b"game content").unwrap();
+        let depot_dir = tmp.path().join("depot");
+
+        let result = intern_object(&depot_dir, &src, "abc123").unwrap();
+
+        assert!(!src.exists());
+        assert_eq!(result, depot_dir.join(".objects/abc123"));
+        assert_eq!(fs::read(&result).unwrap(), b"game content");
+    }
+
+    #[test]
+    fn intern_object_idempotent_when_object_exists() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("abc123"), b"existing").unwrap();
+
+        let src = tmp.path().join("dup.pak");
+        fs::write(&src, b"duplicate content").unwrap();
+
+        let result = intern_object(tmp.path(), &src, "abc123").unwrap();
+
+        assert!(!src.exists());
+        assert_eq!(fs::read(&result).unwrap(), b"existing");
+    }
+
+    #[test]
+    fn intern_object_returns_correct_path() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("x.pak");
+        fs::write(&src, b"x").unwrap();
+
+        let path = intern_object(tmp.path(), &src, "deadbeef").unwrap();
+        assert_eq!(path, tmp.path().join(".objects/deadbeef"));
     }
 }
