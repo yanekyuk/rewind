@@ -1073,7 +1073,17 @@ fn start_download(app: &mut App) {
         // Parse manifest txt and determine which files are missing from the object store
         let manifest_txt = dl_cache_dir
             .join(format!("manifest_{}_{}.txt", dl_depot_id, dl_manifest_id));
-        let entries = rewind_core::cache::parse_manifest_txt(&manifest_txt).unwrap_or_default();
+        let entries = match rewind_core::cache::parse_manifest_txt(&manifest_txt) {
+            Ok(e) => e,
+            Err(e) => {
+                let _ = tx2
+                    .send(rewind_core::depot::DepotProgress::Error(format!(
+                        "Failed to parse manifest: {e}"
+                    )))
+                    .await;
+                return;
+            }
+        };
         let depot_dir = dl_cache_dir
             .parent()
             .expect("manifest cache dir has parent depot dir")
