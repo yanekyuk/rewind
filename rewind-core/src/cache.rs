@@ -177,7 +177,7 @@ pub fn missing_entries<'a>(
     let objects_dir = depot_dir.join(".objects");
     entries
         .iter()
-        .filter(|e| !objects_dir.join(&e.sha1).exists())
+        .filter(|e| !objects_dir.join(&e.sha1).try_exists().unwrap_or(false))
         .collect()
 }
 
