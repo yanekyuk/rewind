@@ -169,6 +169,18 @@ pub fn parse_manifest_txt(path: &Path) -> Result<Vec<ManifestEntry>, CacheError>
     Ok(entries)
 }
 
+/// Returns entries whose SHA1 is not present in `depot_dir/.objects/<sha1>`.
+pub fn missing_entries<'a>(
+    depot_dir: &Path,
+    entries: &'a [ManifestEntry],
+) -> Vec<&'a ManifestEntry> {
+    let objects_dir = depot_dir.join(".objects");
+    entries
+        .iter()
+        .filter(|e| !objects_dir.join(&e.sha1).exists())
+        .collect()
+}
+
 #[cfg(unix)]
 fn create_symlink(target: &Path, link: &Path) -> Result<(), CacheError> {
     std::os::unix::fs::symlink(target, link)?;
@@ -348,5 +360,46 @@ mod tests {
         let entries = parse_manifest_txt(&path).unwrap();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].name, "Data Files/main.pak");
+    }
+
+    #[test]
+    fn missing_entries_all_missing() {
+        let tmp = TempDir::new().unwrap();
+        let entries = vec![
+            ManifestEntry { name: "a.pak".into(), sha1: "aaaa".into(), size_bytes: 10 },
+            ManifestEntry { name: "b.pak".into(), sha1: "bbbb".into(), size_bytes: 20 },
+        ];
+        let missing = missing_entries(tmp.path(), &entries);
+        assert_eq!(missing.len(), 2);
+    }
+
+    #[test]
+    fn missing_entries_all_present() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("aaaa"), b"content a").unwrap();
+        fs::write(objects.join("bbbb"), b"content b").unwrap();
+        let entries = vec![
+            ManifestEntry { name: "a.pak".into(), sha1: "aaaa".into(), size_bytes: 10 },
+            ManifestEntry { name: "b.pak".into(), sha1: "bbbb".into(), size_bytes: 20 },
+        ];
+        let missing = missing_entries(tmp.path(), &entries);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn missing_entries_mixed() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("aaaa"), b"content a").unwrap();
+        let entries = vec![
+            ManifestEntry { name: "a.pak".into(), sha1: "aaaa".into(), size_bytes: 10 },
+            ManifestEntry { name: "b.pak".into(), sha1: "bbbb".into(), size_bytes: 20 },
+        ];
+        let missing = missing_entries(tmp.path(), &entries);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].sha1, "bbbb");
     }
 }
