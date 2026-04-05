@@ -27,8 +27,10 @@ pub enum DepotError {
 pub enum DepotProgress {
     /// A status/info line to display while preparing the download.
     Line(String),
-    /// DepotDownloader binary is ready at this path; interactive download can start.
-    ReadyToDownload { binary: std::path::PathBuf },
+    /// DepotDownloader binary is ready; interactive download can start.
+    /// `filelist_path` is Some when only missing files need downloading (deduplication).
+    /// If None, all files are already cached and the download should be skipped.
+    ReadyToDownload { binary: std::path::PathBuf, filelist_path: Option<std::path::PathBuf> },
     /// DepotDownloader is waiting for user input (e.g. password, Steam Guard).
     Prompt(String),
     Done,
@@ -78,6 +80,22 @@ pub fn build_args(
         "-dir".into(),
         output_dir.to_string(),
     ]
+}
+
+/// Build args for a targeted download using a filelist.
+/// Used when only a subset of manifest files need to be downloaded (deduplication).
+pub fn build_filelist_args(
+    app_id: u32,
+    depot_id: u32,
+    manifest_id: &str,
+    username: &str,
+    output_dir: &str,
+    filelist_path: &str,
+) -> Vec<String> {
+    let mut args = build_args(app_id, depot_id, manifest_id, username, output_dir);
+    args.push("-filelist".into());
+    args.push(filelist_path.into());
+    args
 }
 
 /// Returns the path to the DepotDownloader binary in the rewind bin dir.
@@ -291,6 +309,48 @@ pub async fn run_depot_downloader_interactive(
     }
 }
 
+/// Run DepotDownloader with `-manifest-only` to produce a human-readable manifest file.
+/// No game files are downloaded. The manifest txt is written to `cache_dir`.
+pub async fn run_manifest_only(
+    binary: &Path,
+    app_id: u32,
+    depot_id: u32,
+    manifest_id: &str,
+    username: &str,
+    cache_dir: &Path,
+) -> Result<(), DepotError> {
+    std::fs::create_dir_all(cache_dir)?;
+    let mut args = build_args(
+        app_id,
+        depot_id,
+        manifest_id,
+        username,
+        cache_dir.to_string_lossy().as_ref(),
+    );
+    args.push("-manifest-only".into());
+
+    let mut cmd = Command::new(binary);
+    cmd.args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+
+    #[cfg(unix)]
+    unsafe {
+        cmd.pre_exec(|| {
+            libc::setsid();
+            Ok(())
+        });
+    }
+
+    let status = cmd.spawn()?.wait().await?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(DepotError::ExitFailure(status.code().unwrap_or(-1)))
+    }
+}
+
 /// Run DepotDownloader with piped stdin/stdout/stderr.
 /// Returns a ChildStdin handle so the caller can forward credential input,
 /// and a kill sender that can be used to terminate the child process.
@@ -302,17 +362,28 @@ pub async fn run_depot_downloader(
     manifest_id: &str,
     username: &str,
     cache_dir: &Path,
+    filelist_path: Option<&Path>,
     tx: mpsc::Sender<DepotProgress>,
 ) -> Result<(tokio::process::ChildStdin, mpsc::Sender<()>), DepotError> {
     std::fs::create_dir_all(cache_dir)?;
 
-    let args = build_args(
-        app_id,
-        depot_id,
-        manifest_id,
-        username,
-        cache_dir.to_string_lossy().as_ref(),
-    );
+    let args = match filelist_path {
+        Some(fp) => build_filelist_args(
+            app_id,
+            depot_id,
+            manifest_id,
+            username,
+            cache_dir.to_string_lossy().as_ref(),
+            fp.to_string_lossy().as_ref(),
+        ),
+        None => build_args(
+            app_id,
+            depot_id,
+            manifest_id,
+            username,
+            cache_dir.to_string_lossy().as_ref(),
+        ),
+    };
 
     let mut cmd = Command::new(binary);
     cmd.args(&args)
@@ -413,5 +484,16 @@ mod tests {
         assert!(path.ends_with("DepotDownloader"));
         #[cfg(target_os = "windows")]
         assert!(path.ends_with("DepotDownloader.exe"));
+    }
+
+    #[test]
+    fn build_filelist_args_includes_filelist_flag() {
+        let args = build_filelist_args(570, 571, "abc123", "user", "/tmp/out", "/tmp/list.txt");
+        let s: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        assert!(s.contains(&"-filelist"));
+        let idx = s.iter().position(|&x| x == "-filelist").unwrap();
+        assert_eq!(s[idx + 1], "/tmp/list.txt");
+        assert!(s.contains(&"-app"));
+        assert!(s.contains(&"-manifest"));
     }
 }
