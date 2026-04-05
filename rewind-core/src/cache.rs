@@ -184,6 +184,29 @@ pub fn intern_object(depot_dir: &Path, src: &Path, sha1: &str) -> Result<PathBuf
     Ok(dest)
 }
 
+/// Create a symlink at `manifest_dir/<name>` pointing to the absolute path of
+/// `depot_dir/.objects/<sha1>`. Creates parent directories as needed.
+/// Overwrites an existing symlink at the same path.
+pub fn link_object(
+    depot_dir: &Path,
+    sha1: &str,
+    manifest_dir: &Path,
+    name: &str,
+) -> Result<(), CacheError> {
+    let object_path = depot_dir.join(".objects").join(sha1);
+    let target_abs = std::fs::canonicalize(&object_path)?;
+    let link_path = manifest_dir.join(name);
+
+    if let Some(parent) = link_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if link_path.try_exists().unwrap_or(false) || is_symlink(&link_path) {
+        remove_file_or_symlink(&link_path)?;
+    }
+    create_symlink(&target_abs, &link_path)?;
+    Ok(())
+}
+
 /// Returns entries whose SHA1 is not present in `depot_dir/.objects/<sha1>`.
 pub fn missing_entries<'a>(
     depot_dir: &Path,
@@ -456,5 +479,57 @@ mod tests {
 
         let path = intern_object(tmp.path(), &src, "deadbeef").unwrap();
         assert_eq!(path, tmp.path().join(".objects/deadbeef"));
+    }
+
+    #[test]
+    fn link_object_creates_readable_symlink() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("abc123"), b"game content").unwrap();
+
+        let manifest_dir = tmp.path().join("manifest_aaa");
+        fs::create_dir_all(&manifest_dir).unwrap();
+
+        link_object(tmp.path(), "abc123", &manifest_dir, "file.pak").unwrap();
+
+        let link = manifest_dir.join("file.pak");
+        #[cfg(unix)]
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(&link).unwrap(), b"game content");
+    }
+
+    #[test]
+    fn link_object_creates_subdirectories() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("deadbeef"), b"chunk data").unwrap();
+
+        let manifest_dir = tmp.path().join("manifest_bbb");
+        fs::create_dir_all(&manifest_dir).unwrap();
+
+        link_object(tmp.path(), "deadbeef", &manifest_dir, "0000/0.paz").unwrap();
+
+        let link = manifest_dir.join("0000/0.paz");
+        assert!(link.exists());
+        assert_eq!(fs::read(&link).unwrap(), b"chunk data");
+    }
+
+    #[test]
+    fn link_object_overwrites_existing_symlink() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("v1hash"), b"v1 content").unwrap();
+        fs::write(objects.join("v2hash"), b"v2 content").unwrap();
+
+        let manifest_dir = tmp.path().join("manifest");
+        fs::create_dir_all(&manifest_dir).unwrap();
+
+        link_object(tmp.path(), "v1hash", &manifest_dir, "file.pak").unwrap();
+        link_object(tmp.path(), "v2hash", &manifest_dir, "file.pak").unwrap();
+
+        assert_eq!(fs::read(manifest_dir.join("file.pak")).unwrap(), b"v2 content");
     }
 }
