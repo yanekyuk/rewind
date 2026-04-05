@@ -1290,18 +1290,72 @@ fn finalize_downgrade_with_steps(app: &mut App, dl: PendingDownload) {
         dl.depot_id,
         &dl.current_manifest_id,
     );
+    let depot_dir = cache_root
+        .join(dl.app_id.to_string())
+        .join(dl.depot_id.to_string());
 
-    // Step 4: Backup + Step 5: Link
+    // Parse manifest txt (produced by the manifest-only run in start_download)
+    let manifest_txt = target_cache
+        .join(format!("manifest_{}_{}.txt", dl.depot_id, dl.manifest_id));
+    let entries = rewind_core::cache::parse_manifest_txt(&manifest_txt).unwrap_or_default();
+
+    // Step 4: Backup current game files → current_cache (real file copies)
     app.set_step_status(&StepKind::BackupFiles, StepStatus::InProgress);
-    if let Err(e) =
-        rewind_core::cache::apply_downloaded(&dl.game_install_path, &target_cache, &current_cache)
-    {
+    if let Err(e) = std::fs::create_dir_all(&current_cache) {
         app.set_step_status(&StepKind::BackupFiles, StepStatus::Failed(e.to_string()));
-        app.wizard_state.error = Some(format!("Failed to apply files: {}", e));
+        app.wizard_state.error = Some(format!("Failed to create backup dir: {}", e));
         app.wizard_state.is_downloading = false;
         return;
     }
+    for entry in &entries {
+        let game_file = dl.game_install_path.join(&entry.name);
+        let backup = current_cache.join(&entry.name);
+        if let Some(parent) = backup.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if game_file.exists() {
+            if let Err(e) = std::fs::copy(&game_file, &backup) {
+                app.set_step_status(&StepKind::BackupFiles, StepStatus::Failed(e.to_string()));
+                app.wizard_state.error = Some(format!("Failed to backup file: {}", e));
+                app.wizard_state.is_downloading = false;
+                return;
+            }
+        }
+    }
     app.set_step_status(&StepKind::BackupFiles, StepStatus::Done);
+
+    // Step 5: Intern newly downloaded files + link all entries in target_cache
+    app.set_step_status(&StepKind::LinkFiles, StepStatus::InProgress);
+    for entry in &entries {
+        let file_in_cache = target_cache.join(&entry.name);
+        // Intern if this is a real file (just downloaded — not already a symlink to .objects)
+        if file_in_cache.exists() && !file_in_cache.symlink_metadata()
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+        {
+            if let Err(e) = rewind_core::cache::intern_object(&depot_dir, &file_in_cache, &entry.sha1) {
+                app.set_step_status(&StepKind::LinkFiles, StepStatus::Failed(e.to_string()));
+                app.wizard_state.error = Some(format!("Failed to intern file: {}", e));
+                app.wizard_state.is_downloading = false;
+                return;
+            }
+        }
+        // Create symlink in target_cache pointing to .objects/<sha1>
+        if let Err(e) = rewind_core::cache::link_object(&depot_dir, &entry.sha1, &target_cache, &entry.name) {
+            app.set_step_status(&StepKind::LinkFiles, StepStatus::Failed(e.to_string()));
+            app.wizard_state.error = Some(format!("Failed to link file: {}", e));
+            app.wizard_state.is_downloading = false;
+            return;
+        }
+    }
+
+    // Repoint game dir symlinks to the new manifest's objects
+    if let Err(e) = rewind_core::cache::repoint_symlinks(&dl.game_install_path, &target_cache) {
+        app.set_step_status(&StepKind::LinkFiles, StepStatus::Failed(e.to_string()));
+        app.wizard_state.error = Some(format!("Failed to link game files: {}", e));
+        app.wizard_state.is_downloading = false;
+        return;
+    }
     app.set_step_status(&StepKind::LinkFiles, StepStatus::Done);
 
     // Update game config
