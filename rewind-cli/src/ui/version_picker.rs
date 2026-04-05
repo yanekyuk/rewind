@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, VersionPickerMode};
 use crate::ui::theme;
 use ratatui::{
     Frame,
@@ -24,11 +24,18 @@ pub fn draw(f: &mut Frame, app: &App) {
         || app.version_picker_state.error.is_some();
     let info_height: u16 = if has_info { 1 } else { 0 };
 
+    let editing = matches!(
+        app.version_picker_state.mode,
+        VersionPickerMode::EditingLabel { .. }
+    );
+    let editor_height: u16 = if editing { 1 } else { 0 };
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(info_height), // warning / error line
             Constraint::Min(0),              // version list
+            Constraint::Length(editor_height), // inline label editor
             Constraint::Length(1),           // help bar
         ])
         .split(inner.inner(Margin { horizontal: 1, vertical: 0 }));
@@ -71,11 +78,18 @@ pub fn draw(f: &mut Frame, app: &App) {
             .map(|(i, manifest_id)| {
                 let is_active = manifest_id == active;
                 let is_latest = manifest_id == latest;
+
+                let user_label = app.manifest_db.get_label(manifest_id);
+                let display = match user_label {
+                    Some(lbl) => format!("{lbl}  {manifest_id}"),
+                    None => manifest_id.clone(),
+                };
+
                 let label = match (is_active, is_latest) {
-                    (true, true) => format!("● {} (installed) (latest)", manifest_id),
-                    (true, false) => format!("● {} (installed)", manifest_id),
-                    (false, true) => format!("  {} (latest)", manifest_id),
-                    (false, false) => format!("  {}", manifest_id),
+                    (true, true) => format!("● {display} (installed) (latest)"),
+                    (true, false) => format!("● {display} (installed)"),
+                    (false, true) => format!("  {display} (latest)"),
+                    (false, false) => format!("  {display}"),
                 };
 
                 let style = if i == app.version_picker_state.selected_index {
@@ -94,7 +108,17 @@ pub fn draw(f: &mut Frame, app: &App) {
         f.render_widget(list, layout[1]);
     }
 
-    let help = Paragraph::new(" [↑↓] select   [Enter] switch   [Esc] cancel ")
-        .style(theme::help_bar());
-    f.render_widget(help, layout[2]);
+    if let VersionPickerMode::EditingLabel { input } = &app.version_picker_state.mode {
+        let bar = Paragraph::new(format!(" Label: {}█", input))
+            .style(theme::text());
+        f.render_widget(bar, layout[2]);
+    }
+
+    let help_text = if editing {
+        " [Enter] confirm   [Esc] cancel "
+    } else {
+        " [↑↓] select   [Enter] switch   [E] label   [Esc] cancel "
+    };
+    let help = Paragraph::new(help_text).style(theme::help_bar());
+    f.render_widget(help, layout[3]);
 }
