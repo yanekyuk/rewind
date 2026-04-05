@@ -629,6 +629,53 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
 }
 
 fn handle_version_picker(app: &mut App, key: KeyCode) {
+    // --- Editing mode: intercept all keys ---
+    if matches!(app.version_picker_state.mode, app::VersionPickerMode::EditingLabel { .. }) {
+        match key {
+            KeyCode::Esc => {
+                app.version_picker_state.mode = app::VersionPickerMode::Browse;
+            }
+            KeyCode::Enter => {
+                let input = match &app.version_picker_state.mode {
+                    app::VersionPickerMode::EditingLabel { input } => input.trim().to_string(),
+                    _ => unreachable!(),
+                };
+                let manifest_id = app
+                    .selected_game_entry()
+                    .and_then(|e| {
+                        e.cached_manifest_ids.get(app.version_picker_state.selected_index)
+                    })
+                    .cloned();
+                if let Some(id) = manifest_id {
+                    if input.is_empty() {
+                        app.manifest_db.clear_label(&id);
+                    } else {
+                        app.manifest_db.set_label(&id, input);
+                    }
+                    let _ = rewind_core::manifest_db::save_manifest_db(&app.manifest_db);
+                }
+                app.version_picker_state.mode = app::VersionPickerMode::Browse;
+            }
+            KeyCode::Backspace => {
+                if let app::VersionPickerMode::EditingLabel { input } =
+                    &mut app.version_picker_state.mode
+                {
+                    input.pop();
+                }
+            }
+            KeyCode::Char(c) => {
+                if let app::VersionPickerMode::EditingLabel { input } =
+                    &mut app.version_picker_state.mode
+                {
+                    input.push(c);
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // --- Browse mode ---
     let cached_len = app
         .selected_game_entry()
         .map(|e| e.cached_manifest_ids.len())
@@ -646,6 +693,18 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                 app.version_picker_state.selected_index += 1;
             }
         }
+        KeyCode::Char('e') | KeyCode::Char('E') => {
+            let existing = app
+                .selected_game_entry()
+                .and_then(|e| {
+                    e.cached_manifest_ids.get(app.version_picker_state.selected_index)
+                })
+                .and_then(|id| app.manifest_db.get_label(id))
+                .unwrap_or("")
+                .to_string();
+            app.version_picker_state.mode =
+                app::VersionPickerMode::EditingLabel { input: existing };
+        }
         KeyCode::Enter => {
             let target_manifest = app
                 .selected_game_entry()
@@ -653,7 +712,6 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                 .cloned();
 
             if let Some(manifest_id) = target_manifest {
-                // Check if this is the currently installed manifest
                 let is_current = app
                     .selected_game_entry()
                     .map(|e| e.active_manifest_id == manifest_id)
@@ -675,7 +733,6 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                     .map(|e| e.latest_manifest_id == manifest_id)
                     .unwrap_or(false);
 
-                // Initialize switch overlay steps
                 let mut steps = vec![
                     (app::StepKind::RepointSymlinks, app::StepStatus::Pending),
                     (app::StepKind::PatchAcf, app::StepStatus::Pending),
