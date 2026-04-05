@@ -133,7 +133,7 @@ pub fn list_cached_manifests(cache_root: &Path, app_id: u32, depot_id: u32) -> V
         .unwrap_or_default()
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ManifestEntry {
     pub name: String,
     pub sha1: String,
@@ -160,7 +160,7 @@ pub fn parse_manifest_txt(path: &Path) -> Result<Vec<ManifestEntry>, CacheError>
         if parts.len() < 5 {
             continue;
         }
-        let size_bytes: u64 = parts[0].parse().unwrap_or(0);
+        let Ok(size_bytes) = parts[0].parse::<u64>() else { continue };
         let sha1 = parts[2].to_string();
         let name = parts[4..].join(" ");
         entries.push(ManifestEntry { name, sha1, size_bytes });
@@ -334,5 +334,19 @@ mod tests {
         fs::write(&path, "Content Manifest for Depot 123\n\nManifest ID: 456\n").unwrap();
         let entries = parse_manifest_txt(&path).unwrap();
         assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_manifest_txt_handles_name_with_spaces() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.txt");
+        fs::write(&path,
+            "          Size Chunks File SHA                                 Flags Name\n\
+                    100      1 aabbccdd00112233445566778899001122334455     0 Data Files/main.pak\n"
+        ).unwrap();
+
+        let entries = parse_manifest_txt(&path).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Data Files/main.pak");
     }
 }
