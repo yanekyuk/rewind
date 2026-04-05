@@ -3,6 +3,8 @@ use crate::ui::theme;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
+    style::Modifier,
+    text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph},
 };
 
@@ -80,19 +82,36 @@ pub fn draw(f: &mut Frame, app: &App) {
                 let is_latest = manifest_id == latest;
 
                 let user_label = app.manifest_db.get_label(manifest_id);
-                let display = match user_label {
-                    Some(lbl) => format!("{lbl}  {manifest_id}"),
-                    None => manifest_id.clone(),
+
+                let bullet = if is_active { "● " } else { "  " };
+
+                let suffix = match (is_active, is_latest) {
+                    (true, true) => " (installed) (latest)",
+                    (true, false) => " (installed)",
+                    (false, true) => " (latest)",
+                    (false, false) => "",
                 };
 
-                let label = match (is_active, is_latest) {
-                    (true, true) => format!("● {display} (installed) (latest)"),
-                    (true, false) => format!("● {display} (installed)"),
-                    (false, true) => format!("  {display} (latest)"),
-                    (false, false) => format!("  {display}"),
-                };
+                let mut spans: Vec<Span> = vec![Span::raw(bullet)];
+                match user_label {
+                    Some(lbl) => {
+                        spans.push(Span::styled(
+                            lbl.to_string(),
+                            theme::text().add_modifier(Modifier::BOLD),
+                        ));
+                        spans.push(Span::raw("  "));
+                        spans.push(Span::styled(
+                            manifest_id.clone(),
+                            theme::text().add_modifier(Modifier::DIM),
+                        ));
+                    }
+                    None => {
+                        spans.push(Span::raw(manifest_id.clone()));
+                    }
+                }
+                spans.push(Span::raw(suffix));
 
-                let style = if i == app.version_picker_state.selected_index {
+                let row_style = if i == app.version_picker_state.selected_index {
                     theme::selected()
                 } else if is_active {
                     theme::status_success()
@@ -100,7 +119,7 @@ pub fn draw(f: &mut Frame, app: &App) {
                     theme::text()
                 };
 
-                ListItem::new(label).style(style)
+                ListItem::new(Line::from(spans)).style(row_style)
             })
             .collect();
 
