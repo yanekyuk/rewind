@@ -34,15 +34,17 @@ fn open_settings(app: &mut App) {
 async fn main() -> anyhow::Result<()> {
     let cfg = config::load_config().unwrap_or_default();
     let games_cfg = config::load_games().unwrap_or_default();
-    run(cfg, games_cfg).await
+    let manifest_db = rewind_core::manifest_db::load_manifest_db().unwrap_or_default();
+    run(cfg, games_cfg, manifest_db).await
 }
 
 async fn run(
     cfg: rewind_core::config::Config,
     games_cfg: rewind_core::config::GamesConfig,
+    manifest_db: rewind_core::manifest_db::ManifestDb,
 ) -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
-    let mut app = App::new(cfg, games_cfg);
+    let mut app = App::new(cfg, games_cfg, manifest_db);
 
     // Auto-detect Steam libraries on first run
     if app.config.libraries.is_empty() {
@@ -441,6 +443,7 @@ fn handle_main(app: &mut App, key: KeyCode) {
                     selected_index: 0,
                     steam_warning: steam_running,
                     error: None,
+                    mode: app::VersionPickerMode::Browse,
                 };
                 app.screen = Screen::VersionPicker;
             }

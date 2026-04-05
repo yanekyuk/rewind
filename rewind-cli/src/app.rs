@@ -3,6 +3,7 @@ use fuzzy_matcher::FuzzyMatcher;
 use rewind_core::{
     config::{Config, GameEntry, GamesConfig},
     depot::DepotProgress,
+    manifest_db::ManifestDb,
     reshade::ReshadeProgress,
     scanner::{InstalledGame, SteamAccount},
 };
@@ -93,6 +94,13 @@ pub struct SettingsState {
     pub account_index: usize,
 }
 
+#[derive(Debug, Default, PartialEq)]
+pub enum VersionPickerMode {
+    #[default]
+    Browse,
+    EditingLabel { input: String },
+}
+
 #[derive(Debug, Default)]
 pub struct VersionPickerState {
     pub selected_index: usize,
@@ -100,6 +108,7 @@ pub struct VersionPickerState {
     pub steam_warning: bool,
     /// Set when an operation is blocked (e.g. Steam still running).
     pub error: Option<String>,
+    pub mode: VersionPickerMode,
 }
 
 #[derive(Debug, Default)]
@@ -173,6 +182,7 @@ pub struct App {
     pub screen: Screen,
     pub config: Config,
     pub games_config: GamesConfig,
+    pub manifest_db: ManifestDb,
     pub installed_games: Vec<InstalledGame>,
     pub selected_game_index: usize,
     pub wizard_state: DowngradeWizardState,
@@ -205,12 +215,13 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(config: Config, games_config: GamesConfig) -> Self {
+    pub fn new(config: Config, games_config: GamesConfig, manifest_db: ManifestDb) -> Self {
         let first_run = config.steam_username.is_none() && config.libraries.is_empty();
         App {
             screen: if first_run { Screen::FirstRun } else { Screen::Main },
             config,
             games_config,
+            manifest_db,
             installed_games: Vec::new(),
             selected_game_index: 0,
             wizard_state: DowngradeWizardState::default(),
@@ -293,7 +304,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn make_app(names: &[&str]) -> App {
-        let mut app = App::new(Config::default(), GamesConfig::default());
+        let mut app = App::new(Config::default(), GamesConfig::default(), ManifestDb::default());
         app.installed_games = names
             .iter()
             .enumerate()
