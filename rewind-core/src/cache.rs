@@ -93,6 +93,7 @@ pub fn repoint_symlinks(game_dir: &Path, new_cache_dir: &Path) -> Result<(), Cac
 /// Restore original files: remove symlinks in game_dir and replace with files from backup_cache_dir.
 pub fn restore_from_cache(game_dir: &Path, backup_cache_dir: &Path) -> Result<(), CacheError> {
     for entry in WalkDir::new(backup_cache_dir)
+        .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
