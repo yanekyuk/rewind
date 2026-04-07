@@ -1,8 +1,10 @@
-use crate::app::App;
+use crate::app::{App, VersionPickerMode};
 use crate::ui::theme;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Direction, Layout, Margin},
+    style::Modifier,
+    text::{Line, Span},
     widgets::{Block, BorderType, Borders, Clear, List, ListItem, Paragraph},
 };
 
@@ -24,11 +26,18 @@ pub fn draw(f: &mut Frame, app: &App) {
         || app.version_picker_state.error.is_some();
     let info_height: u16 = if has_info { 1 } else { 0 };
 
+    let editing = matches!(
+        app.version_picker_state.mode,
+        VersionPickerMode::EditingLabel { .. }
+    );
+    let editor_height: u16 = if editing { 1 } else { 0 };
+
     let layout = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(info_height), // warning / error line
             Constraint::Min(0),              // version list
+            Constraint::Length(editor_height), // inline label editor
             Constraint::Length(1),           // help bar
         ])
         .split(inner.inner(Margin { horizontal: 1, vertical: 0 }));
@@ -71,14 +80,38 @@ pub fn draw(f: &mut Frame, app: &App) {
             .map(|(i, manifest_id)| {
                 let is_active = manifest_id == active;
                 let is_latest = manifest_id == latest;
-                let label = match (is_active, is_latest) {
-                    (true, true) => format!("● {} (installed) (latest)", manifest_id),
-                    (true, false) => format!("● {} (installed)", manifest_id),
-                    (false, true) => format!("  {} (latest)", manifest_id),
-                    (false, false) => format!("  {}", manifest_id),
+
+                let user_label = app.manifest_db.get_label(manifest_id);
+
+                let bullet = if is_active { "● " } else { "  " };
+
+                let suffix = match (is_active, is_latest) {
+                    (true, true) => " (installed) (latest)",
+                    (true, false) => " (installed)",
+                    (false, true) => " (latest)",
+                    (false, false) => "",
                 };
 
-                let style = if i == app.version_picker_state.selected_index {
+                let mut spans: Vec<Span> = vec![Span::raw(bullet)];
+                match user_label {
+                    Some(lbl) => {
+                        spans.push(Span::styled(
+                            lbl.to_string(),
+                            theme::text().add_modifier(Modifier::BOLD),
+                        ));
+                        spans.push(Span::raw("  "));
+                        spans.push(Span::styled(
+                            manifest_id.clone(),
+                            theme::text().add_modifier(Modifier::DIM),
+                        ));
+                    }
+                    None => {
+                        spans.push(Span::raw(manifest_id.clone()));
+                    }
+                }
+                spans.push(Span::raw(suffix));
+
+                let row_style = if i == app.version_picker_state.selected_index {
                     theme::selected()
                 } else if is_active {
                     theme::status_success()
@@ -86,7 +119,7 @@ pub fn draw(f: &mut Frame, app: &App) {
                     theme::text()
                 };
 
-                ListItem::new(label).style(style)
+                ListItem::new(Line::from(spans)).style(row_style)
             })
             .collect();
 
@@ -94,7 +127,17 @@ pub fn draw(f: &mut Frame, app: &App) {
         f.render_widget(list, layout[1]);
     }
 
-    let help = Paragraph::new(" [↑↓] select   [Enter] switch   [Esc] cancel ")
-        .style(theme::help_bar());
-    f.render_widget(help, layout[2]);
+    if let VersionPickerMode::EditingLabel { input } = &app.version_picker_state.mode {
+        let bar = Paragraph::new(format!(" Label: {}█", input))
+            .style(theme::text());
+        f.render_widget(bar, layout[2]);
+    }
+
+    let help_text = if editing {
+        " [Enter] confirm   [Esc] cancel "
+    } else {
+        " [↑↓] select   [Enter] switch   [E] label   [Esc] cancel "
+    };
+    let help = Paragraph::new(help_text).style(theme::help_bar());
+    f.render_widget(help, layout[3]);
 }

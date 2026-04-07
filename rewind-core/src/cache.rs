@@ -70,6 +70,7 @@ pub fn apply_downloaded(
 /// Only repoints files that exist in new_cache_dir.
 pub fn repoint_symlinks(game_dir: &Path, new_cache_dir: &Path) -> Result<(), CacheError> {
     for entry in WalkDir::new(new_cache_dir)
+        .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
@@ -92,6 +93,7 @@ pub fn repoint_symlinks(game_dir: &Path, new_cache_dir: &Path) -> Result<(), Cac
 /// Restore original files: remove symlinks in game_dir and replace with files from backup_cache_dir.
 pub fn restore_from_cache(game_dir: &Path, backup_cache_dir: &Path) -> Result<(), CacheError> {
     for entry in WalkDir::new(backup_cache_dir)
+        .follow_links(true)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| e.file_type().is_file())
@@ -126,11 +128,98 @@ pub fn list_cached_manifests(cache_root: &Path, app_id: u32, depot_id: u32) -> V
                 .filter_map(|e| e.ok())
                 .filter(|e| e.path().is_dir())
                 .filter_map(|e| e.file_name().into_string().ok())
+                .filter(|name| name != ".objects")
                 .collect();
             manifests.sort();
             manifests
         })
         .unwrap_or_default()
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ManifestEntry {
+    pub name: String,
+    pub sha1: String,
+    pub size_bytes: u64,
+}
+
+/// Parse a DepotDownloader manifest txt file (produced by `-manifest-only`) into entries.
+/// Skips the header block. Data rows are whitespace-split: [size, chunks, sha1, flags, name]
+pub fn parse_manifest_txt(path: &Path) -> Result<Vec<ManifestEntry>, CacheError> {
+    let content = std::fs::read_to_string(path)?;
+    let mut entries = Vec::new();
+    let mut in_data = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("Size") && trimmed.contains("Chunks") && trimmed.contains("File SHA") {
+            in_data = true;
+            continue;
+        }
+        if !in_data || trimmed.is_empty() {
+            continue;
+        }
+        let parts: Vec<&str> = trimmed.split_whitespace().collect();
+        if parts.len() < 5 {
+            continue;
+        }
+        let Ok(size_bytes) = parts[0].parse::<u64>() else { continue };
+        let sha1 = parts[2].to_string();
+        let name = parts[4..].join(" ");
+        entries.push(ManifestEntry { name, sha1, size_bytes });
+    }
+
+    Ok(entries)
+}
+
+/// Move `src` into `depot_dir/.objects/<sha1>`.
+/// If the object already exists, the source file is removed (discard the duplicate).
+/// Returns the object path.
+pub fn intern_object(depot_dir: &Path, src: &Path, sha1: &str) -> Result<PathBuf, CacheError> {
+    let objects_dir = depot_dir.join(".objects");
+    std::fs::create_dir_all(&objects_dir)?;
+    let dest = objects_dir.join(sha1);
+    if dest.try_exists().unwrap_or(false) {
+        std::fs::remove_file(src)?;
+    } else {
+        std::fs::rename(src, &dest)?;
+    }
+    Ok(dest)
+}
+
+/// Create a symlink at `manifest_dir/<name>` pointing to the absolute path of
+/// `depot_dir/.objects/<sha1>`. Creates parent directories as needed.
+/// Overwrites an existing symlink at the same path.
+pub fn link_object(
+    depot_dir: &Path,
+    sha1: &str,
+    manifest_dir: &Path,
+    name: &str,
+) -> Result<(), CacheError> {
+    let object_path = depot_dir.join(".objects").join(sha1);
+    let target_abs = std::fs::canonicalize(&object_path)?;
+    let link_path = manifest_dir.join(name);
+
+    if let Some(parent) = link_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    if link_path.try_exists().unwrap_or(false) || is_symlink(&link_path) {
+        remove_file_or_symlink(&link_path)?;
+    }
+    create_symlink(&target_abs, &link_path)?;
+    Ok(())
+}
+
+/// Returns entries whose SHA1 is not present in `depot_dir/.objects/<sha1>`.
+pub fn missing_entries<'a>(
+    depot_dir: &Path,
+    entries: &'a [ManifestEntry],
+) -> Vec<&'a ManifestEntry> {
+    let objects_dir = depot_dir.join(".objects");
+    entries
+        .iter()
+        .filter(|e| !objects_dir.join(&e.sha1).try_exists().unwrap_or(false))
+        .collect()
 }
 
 #[cfg(unix)]
@@ -251,5 +340,241 @@ mod tests {
         assert_eq!(manifests.len(), 2);
         assert!(manifests.contains(&"v1".to_string()));
         assert!(manifests.contains(&"v2".to_string()));
+    }
+
+    #[test]
+    fn parse_manifest_txt_parses_entries() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.txt");
+        fs::write(&path,
+            "Content Manifest for Depot 3321461\n\
+             \n\
+             Manifest ID / date     : 123 / 01/01/2024 00:00:00\n\
+             Total number of files  : 2\n\
+             Total number of chunks : 5\n\
+             Total bytes on disk    : 1000\n\
+             Total bytes compressed : 800\n\
+             \n\
+             \n\
+                       Size Chunks File SHA                                 Flags Name\n\
+                    100      1 aabbccdd00112233445566778899001122334455     0 dir/file.pak\n\
+                    200      2 ffeeddccbbaa99887766554433221100ffeeddcc     0 other.bin\n"
+        ).unwrap();
+
+        let entries = parse_manifest_txt(&path).unwrap();
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "dir/file.pak");
+        assert_eq!(entries[0].sha1, "aabbccdd00112233445566778899001122334455");
+        assert_eq!(entries[0].size_bytes, 100);
+        assert_eq!(entries[1].name, "other.bin");
+        assert_eq!(entries[1].sha1, "ffeeddccbbaa99887766554433221100ffeeddcc");
+        assert_eq!(entries[1].size_bytes, 200);
+    }
+
+    #[test]
+    fn parse_manifest_txt_empty_file_returns_empty() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.txt");
+        fs::write(&path, "").unwrap();
+        let entries = parse_manifest_txt(&path).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_manifest_txt_header_only_returns_empty() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.txt");
+        fs::write(&path, "Content Manifest for Depot 123\n\nManifest ID: 456\n").unwrap();
+        let entries = parse_manifest_txt(&path).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn parse_manifest_txt_handles_name_with_spaces() {
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("manifest.txt");
+        fs::write(&path,
+            "          Size Chunks File SHA                                 Flags Name\n\
+                    100      1 aabbccdd00112233445566778899001122334455     0 Data Files/main.pak\n"
+        ).unwrap();
+
+        let entries = parse_manifest_txt(&path).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].name, "Data Files/main.pak");
+    }
+
+    #[test]
+    fn missing_entries_all_missing() {
+        let tmp = TempDir::new().unwrap();
+        let entries = vec![
+            ManifestEntry { name: "a.pak".into(), sha1: "aaaa".into(), size_bytes: 10 },
+            ManifestEntry { name: "b.pak".into(), sha1: "bbbb".into(), size_bytes: 20 },
+        ];
+        let missing = missing_entries(tmp.path(), &entries);
+        assert_eq!(missing.len(), 2);
+    }
+
+    #[test]
+    fn missing_entries_all_present() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("aaaa"), b"content a").unwrap();
+        fs::write(objects.join("bbbb"), b"content b").unwrap();
+        let entries = vec![
+            ManifestEntry { name: "a.pak".into(), sha1: "aaaa".into(), size_bytes: 10 },
+            ManifestEntry { name: "b.pak".into(), sha1: "bbbb".into(), size_bytes: 20 },
+        ];
+        let missing = missing_entries(tmp.path(), &entries);
+        assert!(missing.is_empty());
+    }
+
+    #[test]
+    fn missing_entries_mixed() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("aaaa"), b"content a").unwrap();
+        let entries = vec![
+            ManifestEntry { name: "a.pak".into(), sha1: "aaaa".into(), size_bytes: 10 },
+            ManifestEntry { name: "b.pak".into(), sha1: "bbbb".into(), size_bytes: 20 },
+        ];
+        let missing = missing_entries(tmp.path(), &entries);
+        assert_eq!(missing.len(), 1);
+        assert_eq!(missing[0].sha1, "bbbb");
+    }
+
+    #[test]
+    fn intern_object_moves_file_to_objects() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("file.pak");
+        fs::write(&src, b"game content").unwrap();
+        let depot_dir = tmp.path().join("depot");
+
+        let result = intern_object(&depot_dir, &src, "abc123").unwrap();
+
+        assert!(!src.exists());
+        assert_eq!(result, depot_dir.join(".objects/abc123"));
+        assert_eq!(fs::read(&result).unwrap(), b"game content");
+    }
+
+    #[test]
+    fn intern_object_idempotent_when_object_exists() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("abc123"), b"existing").unwrap();
+
+        let src = tmp.path().join("dup.pak");
+        fs::write(&src, b"duplicate content").unwrap();
+
+        let result = intern_object(tmp.path(), &src, "abc123").unwrap();
+
+        assert!(!src.exists());
+        assert_eq!(fs::read(&result).unwrap(), b"existing");
+    }
+
+    #[test]
+    fn intern_object_returns_correct_path() {
+        let tmp = TempDir::new().unwrap();
+        let src = tmp.path().join("x.pak");
+        fs::write(&src, b"x").unwrap();
+
+        let path = intern_object(tmp.path(), &src, "deadbeef").unwrap();
+        assert_eq!(path, tmp.path().join(".objects/deadbeef"));
+    }
+
+    #[test]
+    fn link_object_creates_readable_symlink() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("abc123"), b"game content").unwrap();
+
+        let manifest_dir = tmp.path().join("manifest_aaa");
+        fs::create_dir_all(&manifest_dir).unwrap();
+
+        link_object(tmp.path(), "abc123", &manifest_dir, "file.pak").unwrap();
+
+        let link = manifest_dir.join("file.pak");
+        #[cfg(unix)]
+        assert!(link.symlink_metadata().unwrap().file_type().is_symlink());
+        assert_eq!(fs::read(&link).unwrap(), b"game content");
+    }
+
+    #[test]
+    fn link_object_creates_subdirectories() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("deadbeef"), b"chunk data").unwrap();
+
+        let manifest_dir = tmp.path().join("manifest_bbb");
+        fs::create_dir_all(&manifest_dir).unwrap();
+
+        link_object(tmp.path(), "deadbeef", &manifest_dir, "0000/0.paz").unwrap();
+
+        let link = manifest_dir.join("0000/0.paz");
+        assert!(link.exists());
+        assert_eq!(fs::read(&link).unwrap(), b"chunk data");
+    }
+
+    #[test]
+    fn link_object_overwrites_existing_symlink() {
+        let tmp = TempDir::new().unwrap();
+        let objects = tmp.path().join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("v1hash"), b"v1 content").unwrap();
+        fs::write(objects.join("v2hash"), b"v2 content").unwrap();
+
+        let manifest_dir = tmp.path().join("manifest");
+        fs::create_dir_all(&manifest_dir).unwrap();
+
+        link_object(tmp.path(), "v1hash", &manifest_dir, "file.pak").unwrap();
+        link_object(tmp.path(), "v2hash", &manifest_dir, "file.pak").unwrap();
+
+        assert_eq!(fs::read(manifest_dir.join("file.pak")).unwrap(), b"v2 content");
+    }
+
+    #[test]
+    fn list_cached_manifests_excludes_objects_dir() {
+        let tmp = TempDir::new().unwrap();
+        let cache_root = tmp.path();
+        let dir1 = manifest_cache_dir(cache_root, 1234, 5678, "v1");
+        fs::create_dir_all(&dir1).unwrap();
+        let objects = cache_root.join("1234/5678/.objects");
+        fs::create_dir_all(&objects).unwrap();
+
+        let manifests = list_cached_manifests(cache_root, 1234, 5678);
+        assert_eq!(manifests, vec!["v1".to_string()]);
+        assert!(!manifests.contains(&".objects".to_string()));
+    }
+
+    #[test]
+    fn repoint_symlinks_follows_symlinks_into_objects() {
+        let tmp = TempDir::new().unwrap();
+        // Set up object store
+        let depot_dir = tmp.path().join("cache/1/2");
+        let objects = depot_dir.join(".objects");
+        fs::create_dir_all(&objects).unwrap();
+        fs::write(objects.join("sha_v2"), b"v2 content").unwrap();
+
+        // Manifest dir where file is a symlink to .objects
+        let manifest_dir = depot_dir.join("v2");
+        fs::create_dir_all(&manifest_dir).unwrap();
+        let obj_abs = fs::canonicalize(objects.join("sha_v2")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&obj_abs, manifest_dir.join("main.pak")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(&obj_abs, manifest_dir.join("main.pak")).unwrap();
+
+        // Game dir with an old file
+        let game_dir = tmp.path().join("game");
+        fs::create_dir_all(&game_dir).unwrap();
+        fs::write(game_dir.join("main.pak"), b"old content").unwrap();
+
+        repoint_symlinks(&game_dir, &manifest_dir).unwrap();
+
+        assert_eq!(fs::read(game_dir.join("main.pak")).unwrap(), b"v2 content");
     }
 }

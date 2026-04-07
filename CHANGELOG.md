@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.0] - 2026-04-05
+
+### Added
+- **Content-addressed cache deduplication** — identical files shared across cached versions are stored only once on disk; re-downloading a file that already exists in another version's cache is skipped automatically
+- **Version labels** — attach a short label (e.g. "pre-nerf", "1.04") to any cached manifest ID; press `E` in the version picker to edit, `Enter` to save, `Esc` to cancel; labels persist in `~/.local/share/rewind/manifests.toml`
+
 ## [0.6.0] - 2026-04-03
 
 ### Added

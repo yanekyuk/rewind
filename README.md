@@ -212,6 +212,7 @@ If you skip this step, `rewind` will still work but falls back to read-only file
 |---------|---------------------------------|
 | `↑` / `↓` | Select version                |
 | `Enter` | Switch to selected version      |
+| `E`     | Label selected version          |
 | `Esc`   | Cancel                          |
 
 ### Settings

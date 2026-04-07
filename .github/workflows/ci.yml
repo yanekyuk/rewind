@@ -41,7 +41,9 @@ jobs:
 
       - name: Install libarchive (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get install -y libarchive-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libarchive-dev
 
       - name: Install libarchive (macOS)
         if: runner.os == 'macOS'

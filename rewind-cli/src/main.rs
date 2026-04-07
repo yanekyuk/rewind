@@ -34,15 +34,17 @@ fn open_settings(app: &mut App) {
 async fn main() -> anyhow::Result<()> {
     let cfg = config::load_config().unwrap_or_default();
     let games_cfg = config::load_games().unwrap_or_default();
-    run(cfg, games_cfg).await
+    let manifest_db = rewind_core::manifest_db::load_manifest_db().unwrap_or_default();
+    run(cfg, games_cfg, manifest_db).await
 }
 
 async fn run(
     cfg: rewind_core::config::Config,
     games_cfg: rewind_core::config::GamesConfig,
+    manifest_db: rewind_core::manifest_db::ManifestDb,
 ) -> anyhow::Result<()> {
     let mut terminal = ratatui::init();
-    let mut app = App::new(cfg, games_cfg);
+    let mut app = App::new(cfg, games_cfg, manifest_db);
 
     // Auto-detect Steam libraries on first run
     if app.config.libraries.is_empty() {
@@ -135,8 +137,14 @@ async fn run(
                         app.last_depot_output = Some(std::time::Instant::now());
                     }
                 }
-                rewind_core::depot::DepotProgress::ReadyToDownload { binary } => {
-                    if let Some(ref dl) = app.pending_download {
+                rewind_core::depot::DepotProgress::ReadyToDownload { binary, filelist_path } => {
+                    if filelist_path.is_none() {
+                        // All files already in object store — skip download, finalize directly
+                        app.set_step_status(&StepKind::DownloadManifest, StepStatus::Done);
+                        if let Some(dl) = app.pending_download.take() {
+                            finalize_downgrade_with_steps(&mut app, dl);
+                        }
+                    } else if let Some(ref dl) = app.pending_download {
                         let (tx_d, rx_d) = mpsc::channel(64);
                         app.progress_rx = Some(rx_d);
 
@@ -147,6 +155,7 @@ async fn run(
                             &dl.manifest_id,
                             &dl.username,
                             &dl.cache_dir,
+                            filelist_path.as_deref(),
                             tx_d,
                         )
                         .await
@@ -441,6 +450,7 @@ fn handle_main(app: &mut App, key: KeyCode) {
                     selected_index: 0,
                     steam_warning: steam_running,
                     error: None,
+                    mode: app::VersionPickerMode::Browse,
                 };
                 app.screen = Screen::VersionPicker;
             }
@@ -626,6 +636,53 @@ fn handle_wizard(app: &mut App, key: KeyCode) {
 }
 
 fn handle_version_picker(app: &mut App, key: KeyCode) {
+    // --- Editing mode: intercept all keys ---
+    if matches!(app.version_picker_state.mode, app::VersionPickerMode::EditingLabel { .. }) {
+        match key {
+            KeyCode::Esc => {
+                app.version_picker_state.mode = app::VersionPickerMode::Browse;
+            }
+            KeyCode::Enter => {
+                let input = match &app.version_picker_state.mode {
+                    app::VersionPickerMode::EditingLabel { input } => input.trim().to_string(),
+                    _ => unreachable!(),
+                };
+                let manifest_id = app
+                    .selected_game_entry()
+                    .and_then(|e| {
+                        e.cached_manifest_ids.get(app.version_picker_state.selected_index)
+                    })
+                    .cloned();
+                if let Some(id) = manifest_id {
+                    if input.is_empty() {
+                        app.manifest_db.clear_label(&id);
+                    } else {
+                        app.manifest_db.set_label(&id, input);
+                    }
+                    let _ = rewind_core::manifest_db::save_manifest_db(&app.manifest_db);
+                }
+                app.version_picker_state.mode = app::VersionPickerMode::Browse;
+            }
+            KeyCode::Backspace => {
+                if let app::VersionPickerMode::EditingLabel { input } =
+                    &mut app.version_picker_state.mode
+                {
+                    input.pop();
+                }
+            }
+            KeyCode::Char(c) => {
+                if let app::VersionPickerMode::EditingLabel { input } =
+                    &mut app.version_picker_state.mode
+                {
+                    input.push(c);
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
+    // --- Browse mode ---
     let cached_len = app
         .selected_game_entry()
         .map(|e| e.cached_manifest_ids.len())
@@ -643,6 +700,18 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                 app.version_picker_state.selected_index += 1;
             }
         }
+        KeyCode::Char('e') | KeyCode::Char('E') => {
+            let existing = app
+                .selected_game_entry()
+                .and_then(|e| {
+                    e.cached_manifest_ids.get(app.version_picker_state.selected_index)
+                })
+                .and_then(|id| app.manifest_db.get_label(id))
+                .unwrap_or("")
+                .to_string();
+            app.version_picker_state.mode =
+                app::VersionPickerMode::EditingLabel { input: existing };
+        }
         KeyCode::Enter => {
             let target_manifest = app
                 .selected_game_entry()
@@ -650,7 +719,6 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                 .cloned();
 
             if let Some(manifest_id) = target_manifest {
-                // Check if this is the currently installed manifest
                 let is_current = app
                     .selected_game_entry()
                     .map(|e| e.active_manifest_id == manifest_id)
@@ -672,7 +740,6 @@ fn handle_version_picker(app: &mut App, key: KeyCode) {
                     .map(|e| e.latest_manifest_id == manifest_id)
                     .unwrap_or(false);
 
-                // Initialize switch overlay steps
                 let mut steps = vec![
                     (app::StepKind::RepointSymlinks, app::StepStatus::Pending),
                     (app::StepKind::PatchAcf, app::StepStatus::Pending),
@@ -938,6 +1005,12 @@ fn start_download(app: &mut App) {
         acf_path: game.acf_path.clone(),
     });
 
+    let dl_app_id = game.app_id;
+    let dl_depot_id = game.depot_id;
+    let dl_manifest_id = app.pending_download.as_ref().map(|d| d.manifest_id.clone()).unwrap_or_default();
+    let dl_username = username.clone();
+    let dl_cache_dir = cache_dir.clone();
+
     let tx2 = tx.clone();
     tokio::spawn(async move {
         if !rewind_core::depot::check_dotnet().await {
@@ -979,8 +1052,60 @@ fn start_download(app: &mut App) {
                 "__STEP_START:DownloadManifest".into(),
             ))
             .await;
+
+        // Phase 1: run manifest-only to get per-file SHA1s without downloading
+        if let Err(e) = rewind_core::depot::run_manifest_only(
+            &binary,
+            dl_app_id,
+            dl_depot_id,
+            &dl_manifest_id,
+            &dl_username,
+            &dl_cache_dir,
+        )
+        .await
+        {
+            let _ = tx2
+                .send(rewind_core::depot::DepotProgress::Error(e.to_string()))
+                .await;
+            return;
+        }
+
+        // Parse manifest txt and determine which files are missing from the object store
+        let manifest_txt = dl_cache_dir
+            .join(format!("manifest_{}_{}.txt", dl_depot_id, dl_manifest_id));
+        let entries = match rewind_core::cache::parse_manifest_txt(&manifest_txt) {
+            Ok(e) => e,
+            Err(e) => {
+                let _ = tx2
+                    .send(rewind_core::depot::DepotProgress::Error(format!(
+                        "Failed to parse manifest: {e}"
+                    )))
+                    .await;
+                return;
+            }
+        };
+        let depot_dir = dl_cache_dir
+            .parent()
+            .expect("manifest cache dir has parent depot dir")
+            .to_path_buf();
+        let missing = rewind_core::cache::missing_entries(&depot_dir, &entries);
+
+        let filelist_path = if missing.is_empty() {
+            None
+        } else {
+            let path = dl_cache_dir.join(".filelist");
+            let content = missing.iter().map(|e| e.name.as_str()).collect::<Vec<_>>().join("\n");
+            if let Err(e) = std::fs::write(&path, content) {
+                let _ = tx2
+                    .send(rewind_core::depot::DepotProgress::Error(e.to_string()))
+                    .await;
+                return;
+            }
+            Some(path)
+        };
+
         let _ = tx2
-            .send(rewind_core::depot::DepotProgress::ReadyToDownload { binary })
+            .send(rewind_core::depot::DepotProgress::ReadyToDownload { binary, filelist_path })
             .await;
     });
 }
@@ -1175,18 +1300,78 @@ fn finalize_downgrade_with_steps(app: &mut App, dl: PendingDownload) {
         dl.depot_id,
         &dl.current_manifest_id,
     );
+    let depot_dir = cache_root
+        .join(dl.app_id.to_string())
+        .join(dl.depot_id.to_string());
 
-    // Step 4: Backup + Step 5: Link
-    app.set_step_status(&StepKind::BackupFiles, StepStatus::InProgress);
-    if let Err(e) =
-        rewind_core::cache::apply_downloaded(&dl.game_install_path, &target_cache, &current_cache)
-    {
-        app.set_step_status(&StepKind::BackupFiles, StepStatus::Failed(e.to_string()));
-        app.wizard_state.error = Some(format!("Failed to apply files: {}", e));
+    // Parse manifest txt (produced by the manifest-only run in start_download)
+    let manifest_txt = target_cache
+        .join(format!("manifest_{}_{}.txt", dl.depot_id, dl.manifest_id));
+    let entries = rewind_core::cache::parse_manifest_txt(&manifest_txt).unwrap_or_default();
+    if entries.is_empty() {
+        app.set_step_status(&StepKind::BackupFiles, StepStatus::Failed("Manifest file is empty or missing".into()));
+        app.wizard_state.error = Some("Manifest file could not be read — cannot apply downgrade".to_string());
         app.wizard_state.is_downloading = false;
         return;
     }
+
+    // Step 4: Backup current game files → current_cache (real file copies)
+    app.set_step_status(&StepKind::BackupFiles, StepStatus::InProgress);
+    if let Err(e) = std::fs::create_dir_all(&current_cache) {
+        app.set_step_status(&StepKind::BackupFiles, StepStatus::Failed(e.to_string()));
+        app.wizard_state.error = Some(format!("Failed to create backup dir: {}", e));
+        app.wizard_state.is_downloading = false;
+        return;
+    }
+    for entry in &entries {
+        let game_file = dl.game_install_path.join(&entry.name);
+        let backup = current_cache.join(&entry.name);
+        if let Some(parent) = backup.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if game_file.exists() {
+            if let Err(e) = std::fs::copy(&game_file, &backup) {
+                app.set_step_status(&StepKind::BackupFiles, StepStatus::Failed(e.to_string()));
+                app.wizard_state.error = Some(format!("Failed to backup file: {}", e));
+                app.wizard_state.is_downloading = false;
+                return;
+            }
+        }
+    }
     app.set_step_status(&StepKind::BackupFiles, StepStatus::Done);
+
+    // Step 5: Intern newly downloaded files + link all entries in target_cache
+    app.set_step_status(&StepKind::LinkFiles, StepStatus::InProgress);
+    for entry in &entries {
+        let file_in_cache = target_cache.join(&entry.name);
+        // Intern if this is a real file (just downloaded — not already a symlink to .objects)
+        if file_in_cache.exists() && !file_in_cache.symlink_metadata()
+            .map(|m| m.file_type().is_symlink())
+            .unwrap_or(false)
+        {
+            if let Err(e) = rewind_core::cache::intern_object(&depot_dir, &file_in_cache, &entry.sha1) {
+                app.set_step_status(&StepKind::LinkFiles, StepStatus::Failed(e.to_string()));
+                app.wizard_state.error = Some(format!("Failed to intern file: {}", e));
+                app.wizard_state.is_downloading = false;
+                return;
+            }
+        }
+        // Create symlink in target_cache pointing to .objects/<sha1>
+        if let Err(e) = rewind_core::cache::link_object(&depot_dir, &entry.sha1, &target_cache, &entry.name) {
+            app.set_step_status(&StepKind::LinkFiles, StepStatus::Failed(e.to_string()));
+            app.wizard_state.error = Some(format!("Failed to link file: {}", e));
+            app.wizard_state.is_downloading = false;
+            return;
+        }
+    }
+
+    // Repoint game dir symlinks to the new manifest's objects
+    if let Err(e) = rewind_core::cache::repoint_symlinks(&dl.game_install_path, &target_cache) {
+        app.set_step_status(&StepKind::LinkFiles, StepStatus::Failed(e.to_string()));
+        app.wizard_state.error = Some(format!("Failed to link game files: {}", e));
+        app.wizard_state.is_downloading = false;
+        return;
+    }
     app.set_step_status(&StepKind::LinkFiles, StepStatus::Done);
 
     // Update game config
